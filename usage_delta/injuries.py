@@ -150,14 +150,45 @@ def _self_status(deltas: pd.DataFrame, injuries: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def injury_duration(injuries: pd.DataFrame) -> pd.DataFrame:
+    """How long has each injury been going on, as of each week?
+
+    Two signals, both cumulative and backward-looking (nothing here peeks
+    at the future):
+
+      report_weeks  how many weeks this player has appeared on the report
+                    with this same primary injury
+      games_missed  how many weeks he has been ruled Out so far
+
+    A hamstring appearing for the first time could clear in days. A foot
+    that has been on the report three separate weeks is chronic, and the
+    vacancy behind it is worth acting on.
+    """
+    df = injuries.sort_values(["season", "gsis_id", "week"]).copy()
+
+    # Same-injury streak, keyed on the reported body part.
+    df["_injury"] = df["report_primary_injury"].fillna("unspecified")
+    df["report_weeks"] = (
+        df.groupby(["season", "gsis_id", "_injury"]).cumcount() + 1
+    )
+    df["games_missed"] = (
+        df.groupby(["season", "gsis_id"])["sidelined"].cumsum().astype(int)
+    )
+
+    return df.drop(columns=["_injury"])
+
+
 def _teammate_availability(
     usage: pd.DataFrame, injuries: pd.DataFrame
 ) -> pd.DataFrame:
-    """Count meaningful same-position teammates sidelined, per team per week.
+    """Same-position teammates sidelined, per team per week, with duration.
 
     "Meaningful" means the teammate had held at least TEAMMATE_MIN_SHARE of
     snaps in a prior week. A fourth-string receiver being Out explains
     nothing about anyone's workload.
+
+    vacancy_weeks is the longest-running injury among those teammates. It is
+    what separates a one-week rental from a role you can actually trade for.
     """
     peak = (
         usage.groupby(["season", "gsis_id"], as_index=False)["offense_pct"]
@@ -165,14 +196,15 @@ def _teammate_availability(
         .rename(columns={"offense_pct": "peak_share"})
     )
 
-    inj = injuries[injuries["sidelined"]].merge(
-        peak, on=["season", "gsis_id"], how="left"
-    )
+    inj = injury_duration(injuries)
+    inj = inj[inj["sidelined"]].merge(peak, on=["season", "gsis_id"], how="left")
     inj = inj[inj["peak_share"] >= TEAMMATE_MIN_SHARE]
 
-    return (
-        inj.groupby(["season", "week", "team", "position"], as_index=False)
-        .agg(sidelined_at_pos=("gsis_id", "nunique"))
+    inj["vacancy_weeks"] = inj[["report_weeks", "games_missed"]].max(axis=1)
+
+    return inj.groupby(["season", "week", "team", "position"], as_index=False).agg(
+        sidelined_at_pos=("gsis_id", "nunique"),
+        vacancy_weeks=("vacancy_weeks", "max"),
     )
 
 
@@ -206,12 +238,23 @@ def tag(
     usage: pd.DataFrame,
     injuries: pd.DataFrame,
     lookahead: bool = True,
+    min_vacancy_weeks: int = 2,
 ) -> pd.DataFrame:
     """Add `injury_tag` and `priced` to a delta table.
 
     lookahead uses the following week's injury report to catch mid-game
     exits. Leave it on for backtests and for reviewing a past week; it has
     no effect on the most recent week, where no later report exists yet.
+
+    min_vacancy_weeks splits teammate-driven rises by how long the vacancy
+    has already run. Below the threshold it is a rental and gets filtered
+    out as priced; at or above it the role is durable enough to act on and
+    stays in the list as `teammate_out_durable`.
+
+    This matters more than it sounds. Germie Bernard's 40% -> 92% jump in
+    2026 week 5 is caused by Michael Pittman's absence, so a naive join
+    discards it -- but Pittman's foot had been on the report three separate
+    weeks and he had already missed two games. That is not a rental.
     """
     df = _self_status(deltas, injuries)
 
@@ -226,12 +269,20 @@ def tag(
         how="left",
     )
     df = df.merge(
-        avail.rename(columns={"week": "prev_week", "sidelined_at_pos": "pos_out_prev"}),
+        avail.rename(
+            columns={
+                "week": "prev_week",
+                "sidelined_at_pos": "pos_out_prev",
+                "vacancy_weeks": "_vw_prev",
+            }
+        ),
         on=["season", "prev_week", "team", "position"],
         how="left",
     )
     df["pos_out_now"] = df["pos_out_now"].fillna(0)
     df["pos_out_prev"] = df["pos_out_prev"].fillna(0)
+    df["vacancy_weeks"] = df["vacancy_weeks"].fillna(0).astype(int)
+    df = df.drop(columns=["_vw_prev"], errors="ignore")
 
     # The player himself is counted above if he was out; remove him so a
     # player's own absence doesn't read as a teammate vacancy.
@@ -258,12 +309,15 @@ def tag(
     # week. Only available with lookahead.
     exited = df.get("hurt_next_week", pd.Series(False, index=df.index)) & fell
 
+    durable = df["vacancy_weeks"] >= min_vacancy_weeks
+
     # Order matters: a return to health outranks a vacancy as the explanation
     # for a rise, and the player's own status outranks a teammate's.
     conditions = [
         returning,
         self_hurt_now & fell,
         exited,
+        vacancy_opened & rose & durable,
         vacancy_opened & rose,
         competitor_back & fell,
         self_hurt_now,
@@ -272,6 +326,7 @@ def tag(
         "self_returning",
         "self_injured",
         "self_exited",
+        "teammate_out_durable",
         "teammate_out",
         "teammate_back",
         "self_injured",
@@ -279,8 +334,8 @@ def tag(
 
     df["injury_tag"] = np.select(conditions, labels, default="unexplained")
 
-    # "Priced" means the market already knows. teammate_out is priced but
-    # also temporary, which is a different kind of useful.
-    df["priced"] = df["injury_tag"] != "unexplained"
+    # "Priced" means the market already knows AND the situation reverts.
+    # A durable vacancy is known but not reverting, so it stays actionable.
+    df["priced"] = ~df["injury_tag"].isin(["unexplained", "teammate_out_durable"])
 
     return df

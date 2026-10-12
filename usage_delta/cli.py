@@ -48,6 +48,15 @@ def main() -> None:
         help="ignore next week's injury report (simulates Tuesday knowledge)",
     )
     p.add_argument(
+        "--min-vacancy-weeks",
+        type=int,
+        default=2,
+        help=(
+            "a teammate-driven rise counts as actionable once the vacancy "
+            "has run this many weeks; below it, treated as a rental (default 2)"
+        ),
+    )
+    p.add_argument(
         "--refresh",
         action="store_true",
         help="re-download instead of using the local cache",
@@ -65,6 +74,7 @@ def main() -> None:
         usage,
         load_injuries(args.season, refresh=args.refresh),
         lookahead=not args.no_lookahead,
+        min_vacancy_weeks=args.min_vacancy_weeks,
     )
 
     out = report(

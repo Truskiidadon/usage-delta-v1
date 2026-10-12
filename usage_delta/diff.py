@@ -146,6 +146,7 @@ def report(
         "context_ok",
         "confirmed",
         "injury_tag",
+        "vacancy_weeks",
         "priced",
     ]
     cols = [c for c in cols if c in out.columns]
