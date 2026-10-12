@@ -1,0 +1,16 @@
+# Cached parquet pulls from nflverse -- re-downloadable, don't version them
+data/
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

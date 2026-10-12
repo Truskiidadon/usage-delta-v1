@@ -1,5 +1,4 @@
 # usage-delta-v1
-# usage-delta
 
 Diff NFL weekly usage data week over week to surface role changes before the fantasy market prices them.
 
@@ -175,11 +174,49 @@ Python. `pandas` for the diff, `requests` for data pulls, `nfl_data_py` for the 
 
 ---
 
+## Usage
+
+```bash
+pip install -r requirements.txt
+
+python -m usage_delta.cli --week 5
+python -m usage_delta.cli --week 5 --confirmed-only
+python -m usage_delta.cli --week 5 --metric target_share --positions RB
+python -m usage_delta.cli --week 5 --refresh   # re-pull instead of using cache
+```
+
+Route participation is not in the free nflverse feed — it comes from PFF.
+v1 uses snap share, target share, and air yards share as the usage set.
+
+---
+
 ## Roadmap
 
-- [ ] v1: snap share and route participation diff, single position
-- [ ] Injury report join
-- [ ] All positions, position-specific metric sets
-- [ ] Confirmation logic (two-week hold)
+- [x] v1: snap share / target share / air yards share diff, all skill positions
+- [x] Confirmation logic (two-week hold)
+- [x] Game context flag (team play volume)
+- [ ] **Injury report join** — the next and most important piece
+- [ ] Route participation (needs a PFF source)
+- [ ] Teammate-availability join
 - [ ] Offense quality context layer
 - [ ] Historical backtest — did flagged players outproduce their rank over the following three weeks?
+
+### Current state
+
+v1 runs end to end on live data. Validated against known 2026 cases:
+
+| Player | Season snap share | What the tool does |
+|---|---|---|
+| Omarion Hampton | 58 → 63 → 42 → 35 → 30% | Flags the W2→W3 drop at −21pp |
+| Jaylen Warren | 37 → 71 → 90 → 97 → 87% | Fires actionable in W2, confirms in W3 |
+| Denzel Boston | 92 → 93 → 89 → 95 → 91% | Silent — role never moved, only production |
+
+**The known gap:** Week 5 produces 159 raw flags, and the largest are
+injury churn — players returning (Jefferson 12→89%, Chase 20→89%) or
+exiting mid-game (Concepcion 92→16%, Harris 93→45%). All priced within
+hours of the injury report.
+
+Two-week confirmation cuts 159 → 30 and surfaces real role changes
+(Germie Bernard 40 → 92% at a 30% target share; the Houston backfield
+flipping from Montgomery to Woody Marks). But confirmation is a blunt
+proxy. The injury join is what makes this a tool rather than a feed.

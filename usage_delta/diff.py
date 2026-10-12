@@ -1,0 +1,152 @@
+"""Week-over-week usage diffs.
+
+The market prices levels. This prices change.
+"""
+
+import numpy as np
+import pandas as pd
+
+# Thresholds, as fractions (0.09 == 9 percentage points).
+ALERT_PP = 0.09
+ACTIONABLE_PP = 0.15
+
+# A move at a small baseline matters more than the same move at a large one.
+# 30% -> 45% is a role change; 75% -> 90% is often just a long game.
+# Trigger on whichever is easier to clear: the flat threshold or this.
+RELATIVE_TRIGGER = 0.25
+
+# Team plays outside this band around the team's season average make that
+# week's snap shares unreliable -- too few plays and shares get noisy, too
+# many (a blowout, a long overtime) and backups eat garbage-time snaps.
+PLAYS_BAND = 0.20
+
+# Metrics that get diffed. Efficiency metrics are deliberately excluded:
+# they explain a flag after it fires, they do not generate one.
+USAGE_METRICS = ["offense_pct", "target_share", "air_yards_share"]
+
+# Below this, snap share is too jumpy to read as role.
+MIN_SNAPS = 5
+
+
+def _tier(delta: float, prior: float) -> str:
+    """Classify a single delta as actionable, alert, or nothing.
+
+    Absolute move clears the flat bar, OR a smaller move clears the
+    relative bar at a low baseline.
+    """
+    if pd.isna(delta) or pd.isna(prior):
+        return "none"
+
+    size = abs(delta)
+    relative = abs(delta) / prior if prior > 0 else np.inf
+
+    if size >= ACTIONABLE_PP or (relative >= RELATIVE_TRIGGER and size >= ALERT_PP):
+        return "actionable"
+    if size >= ALERT_PP or (relative >= RELATIVE_TRIGGER and size >= ALERT_PP / 2):
+        return "alert"
+    return "none"
+
+
+def flag_game_context(usage: pd.DataFrame) -> pd.DataFrame:
+    """Mark weeks where team play volume was abnormal.
+
+    A delta from a flagged week still surfaces, but carries lower confidence
+    and does not satisfy the two-week confirmation requirement on its own.
+    """
+    df = usage.copy()
+    avg = (
+        df.groupby(["season", "team"], as_index=False)["team_plays"]
+        .mean()
+        .rename(columns={"team_plays": "team_plays_avg"})
+    )
+    df = df.merge(avg, on=["season", "team"], how="left")
+
+    deviation = (df["team_plays"] - df["team_plays_avg"]).abs() / df["team_plays_avg"]
+    df["context_ok"] = deviation <= PLAYS_BAND
+    return df
+
+
+def compute_deltas(usage: pd.DataFrame, metrics=None) -> pd.DataFrame:
+    """One row per player per week, with the change from the prior week.
+
+    Diffs are taken against the player's previous *appearance*, not the
+    previous calendar week, so a bye or an inactive game does not read as
+    a role collapse.
+    """
+    metrics = metrics or USAGE_METRICS
+    df = flag_game_context(usage).sort_values(["pfr_player_id", "week"]).copy()
+
+    grp = df.groupby("pfr_player_id", sort=False)
+
+    df["prev_week"] = grp["week"].shift(1)
+    df["weeks_since"] = df["week"] - df["prev_week"]
+
+    for m in metrics:
+        if m not in df.columns:
+            continue
+        prior = grp[m].shift(1)
+        df[f"{m}_prior"] = prior
+        df[f"{m}_delta"] = df[m] - prior
+        df[f"{m}_tier"] = [
+            _tier(d, p) for d, p in zip(df[f"{m}_delta"], prior)
+        ]
+
+    # Raw snaps alongside share: a flat 75% share can hide 15 extra snaps.
+    df["offense_snaps_prior"] = grp["offense_snaps"].shift(1)
+    df["offense_snaps_delta"] = df["offense_snaps"] - df["offense_snaps_prior"]
+
+    return df
+
+
+def confirmed_trend(deltas: pd.DataFrame, metric: str = "offense_pct") -> pd.DataFrame:
+    """Flag players whose move held for two consecutive appearances.
+
+    One week of movement is often game script. A move that holds is a role.
+    """
+    df = deltas.sort_values(["pfr_player_id", "week"]).copy()
+    col = f"{metric}_delta"
+
+    grp = df.groupby("pfr_player_id", sort=False)
+    prior_delta = grp[col].shift(1)
+
+    same_direction = np.sign(df[col]) == np.sign(prior_delta)
+    both_real = (df[col].abs() >= ALERT_PP / 2) & (prior_delta.abs() >= ALERT_PP / 2)
+
+    df["confirmed"] = same_direction & both_real & df[col].notna()
+    return df
+
+
+def report(
+    deltas: pd.DataFrame,
+    week: int,
+    metric: str = "offense_pct",
+    positions=("WR", "RB", "TE"),
+    min_tier: str = "alert",
+) -> pd.DataFrame:
+    """Sorted list of flagged role changes for one week, both directions."""
+    tiers = {"alert": ["alert", "actionable"], "actionable": ["actionable"]}[min_tier]
+
+    out = deltas[
+        (deltas["week"] == week)
+        & (deltas["position"].isin(positions))
+        & (deltas[f"{metric}_tier"].isin(tiers))
+        & (deltas["offense_snaps"] >= MIN_SNAPS)
+    ].copy()
+
+    cols = [
+        "week",
+        "player",
+        "position",
+        "team",
+        f"{metric}_prior",
+        metric,
+        f"{metric}_delta",
+        f"{metric}_tier",
+        "offense_snaps_delta",
+        "context_ok",
+    ]
+    if "confirmed" in out.columns:
+        cols.append("confirmed")
+
+    cols = [c for c in cols if c in out.columns]
+    return out[cols].sort_values(f"{metric}_delta", key=abs, ascending=False)
