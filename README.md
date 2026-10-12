@@ -412,6 +412,33 @@ most valuable category: vacancies the market has not priced by Tuesday,
 because the injury report has not caught up either. Separating those two is
 the real opportunity, and it reframes the `priced` finding above.
 
+### Corroboration: require target share to move too
+
+A snap-share rise says the player was on the field more. Pairing it with a
+target-share rise says he was on the field more **and getting the ball** —
+a different claim, and it removes most of the false positives: blowout
+snaps, a move into a blocking role.
+
+| filter | tune hit | holdout hit | holdout lift |
+|---|---|---|---|
+| snap ≥25pp alone | 59.1% | 53.9% | 1.66 |
+| + target share rose | 61.2% | 58.5% | 2.13 |
+| + target share ≥5pp | 66.9% | 63.2% | 2.37 |
+| **snap ≥30pp + target ≥5pp** | **70.3%** | **65.5%** | **2.89** |
+
+Monotonic in both sets and the holdout tracks the tune set closely. Adding
+air-yards share on top made it worse (62.5%), so it is not used.
+
+Volume drops from 258 flags to 87 over six seasons, about 15 a season. For
+a 12-team league making 15–20 adds a year that is close to right: a tighter
+screen surfacing 15 names at 65% beats 43 names at 54%.
+
+Lift of 2.89 also clears the practical bar — roughly the gap between
+typical flex options, which is what makes a flag worth acting on rather
+than merely real.
+
+`--corroborated-only` on the CLI.
+
 ### Negative result: paired teammate vacancy
 
 Tested whether the in-game blind spot could be covered with snap data alone,

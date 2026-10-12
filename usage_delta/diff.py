@@ -7,8 +7,31 @@ import numpy as np
 import pandas as pd
 
 # Thresholds, as fractions (0.09 == 9 percentage points).
+#
+# These were originally guesses. The backtest (13 seasons, 75k player-weeks)
+# showed lift rising monotonically with the threshold -- 0.53 at 9pp, 1.00 at
+# 20pp, 1.53 at 30pp, 1.96 at 40pp -- and that the shipped defaults flagged
+# 45% of all player-weeks, which is not a screen. ACTIONABLE moved 0.15 -> 0.25
+# on that evidence. ALERT stays loose on purpose: it is a watch list, not a
+# decision.
 ALERT_PP = 0.09
-ACTIONABLE_PP = 0.15
+ACTIONABLE_PP = 0.25
+
+# A snap-share rise alone says the player was on the field more. Pairing it
+# with a target-share rise says he was on the field more AND getting the ball,
+# which is a different claim and kills most of the false positives -- the
+# blowout snaps, the move into a blocking role.
+#
+# Backtested, and it replicates (hit rate vs matched controls):
+#
+#                                  tune    holdout
+#   snap >=25pp alone              59.1%    53.9%
+#   + target share rose            61.2%    58.5%
+#   + target share >=5pp           66.9%    63.2%
+#   snap >=30pp + target >=5pp     70.3%    65.5%
+#
+# Adding air-yards share on top made it worse (62.5%), so it is not used.
+CONFIRM_TARGET_PP = 0.05
 
 # A move at a small baseline matters more than the same move at a large one.
 # 30% -> 45% is a role change; 75% -> 90% is often just a long game.
@@ -95,6 +118,18 @@ def compute_deltas(usage: pd.DataFrame, metrics=None) -> pd.DataFrame:
     df["offense_snaps_prior"] = grp["offense_snaps"].shift(1)
     df["offense_snaps_delta"] = df["offense_snaps"] - df["offense_snaps_prior"]
 
+    # Snap share and target share moving together. See CONFIRM_TARGET_PP.
+    if "target_share_delta" in df.columns:
+        df["corroborated"] = (
+            (df["offense_pct_delta"] > 0)
+            & (df["target_share_delta"] >= CONFIRM_TARGET_PP)
+        ) | (
+            (df["offense_pct_delta"] < 0)
+            & (df["target_share_delta"] <= -CONFIRM_TARGET_PP)
+        )
+    else:
+        df["corroborated"] = False
+
     return df
 
 
@@ -122,6 +157,7 @@ def report(
     metric: str = "offense_pct",
     positions=("WR", "RB", "TE"),
     min_tier: str = "alert",
+    corroborated_only: bool = False,
 ) -> pd.DataFrame:
     """Sorted list of flagged role changes for one week, both directions."""
     tiers = {"alert": ["alert", "actionable"], "actionable": ["actionable"]}[min_tier]
@@ -145,9 +181,14 @@ def report(
         "offense_snaps_delta",
         "context_ok",
         "confirmed",
+        "corroborated",
         "injury_tag",
         "vacancy_weeks",
         "priced",
     ]
     cols = [c for c in cols if c in out.columns]
+
+    if corroborated_only:
+        out = out[out["corroborated"]]
+
     return out[cols].sort_values(f"{metric}_delta", key=abs, ascending=False)

@@ -38,6 +38,11 @@ def main() -> None:
         help="only moves that held for two consecutive appearances",
     )
     p.add_argument(
+        "--corroborated-only",
+        action="store_true",
+        help="require target share to move with snap share (highest precision)",
+    )
+    p.add_argument(
         "--all-tags",
         action="store_true",
         help="include injury-explained deltas (default: unexplained only)",
@@ -83,6 +88,7 @@ def main() -> None:
         metric=args.metric,
         positions=tuple(args.positions.split(",")),
         min_tier=args.min_tier,
+        corroborated_only=args.corroborated_only,
     )
     total = len(out)
 
