@@ -14,3 +14,7 @@ env/
 .vscode/
 .idea/
 .DS_Store
+
+# Backtest panels (large, regenerable); results.csv is kept
+bt_out/*.parquet
+bt_out/*.log

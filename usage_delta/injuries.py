@@ -58,7 +58,11 @@ def load_injuries(season: int, refresh: bool = False) -> pd.DataFrame:
         f"injuries_{season}.parquet",
         refresh,
     )
-    df = df[df["season_type"] == "REG"].copy()
+    # Schema drift: `season_type` was only added in 2025. Files from 2012
+    # through 2024 carry `game_type` instead, with the same REG/POST values.
+    season_col = "season_type" if "season_type" in df.columns else "game_type"
+    df = df[df[season_col] == "REG"].copy()
+    df["season_type"] = "REG"
 
     df["sidelined"] = df["report_status"].isin(SIDELINED)
     df["limited"] = df["report_status"].isin(LIMITED)

@@ -88,6 +88,7 @@ def load_weekly_stats(season: int, refresh: bool = False) -> pd.DataFrame:
         "receiving_yards",
         "carries",
         "rushing_yards",
+        "fantasy_points_ppr",
     ]
     present = [c for c in keep if c in df.columns]
     return df[present].copy()

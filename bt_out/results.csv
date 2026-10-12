@@ -1,0 +1,13 @@
+set,group,filter,n,lift,hit
+tune,unexplained,all rises,7483,0.43,0.43
+tune,unexplained,confirmed rises,1394,1.027,0.475
+tune,unexplained,confirmed >=25pp,298,2.274,0.591
+tune,priced,all rises,1483,1.077,0.488
+tune,priced,confirmed rises,335,1.387,0.493
+tune,priced,confirmed >=25pp,125,2.435,0.544
+holdout,unexplained,all rises,6802,0.552,0.421
+holdout,unexplained,confirmed rises,1285,0.918,0.442
+holdout,unexplained,confirmed >=25pp,258,1.656,0.539
+holdout,priced,all rises,1596,0.897,0.479
+holdout,priced,confirmed rises,319,1.66,0.533
+holdout,priced,confirmed >=25pp,103,2.262,0.621

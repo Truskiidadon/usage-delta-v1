@@ -334,6 +334,70 @@ there may never fire.
 
 ---
 
+## Backtest results
+
+13 seasons, 75,457 player-weeks. Tuned on 2013–2019, validated once on
+2020–2025. Lift is PPR per game over baseline-matched controls.
+
+| set | group | filter | n | lift | hit |
+|---|---|---|---|---|---|
+| tune | unexplained | all rises | 7483 | 0.43 | .43 |
+| tune | unexplained | confirmed rises | 1394 | 1.03 | .47 |
+| tune | unexplained | confirmed ≥25pp | 298 | **2.27** | .59 |
+| tune | priced | confirmed ≥25pp | 125 | 2.44 | .54 |
+| **holdout** | **unexplained** | **confirmed ≥25pp** | **258** | **1.66** | **.54** |
+| holdout | priced | confirmed ≥25pp | 103 | 2.26 | .62 |
+
+**The null is cleared.** The pre-registered bar was 0.5 PPR per game over
+controls. The holdout returns 1.66. Even the harsh variant — zero-filling
+players who missed the entire outcome window rather than dropping them —
+returns 1.08.
+
+Tune 2.27 → holdout 1.66 is ordinary shrinkage, not collapse. Excluding
+2020 moves it to 1.73, so COVID was not driving the result.
+
+### What it establishes
+
+**Direction is real.** Flagged rises beat controls, flagged declines
+underperform them (−0.61 unexplained, −1.30 priced on the tune set). The
+down-side alerts work.
+
+**Thresholds were far too loose.** The shipped defaults flag 45% of all
+player-weeks. Lift rises monotonically with the threshold — 0.53 at 9pp,
+1.00 at 20pp, 1.53 at 30pp, 1.96 at 40pp — and monotonicity across seven
+seasons is what a real effect looks like. **Actionable should be ~25pp, not
+15pp.**
+
+**Confirmation is the strongest single lever**, roughly doubling lift at
+every threshold. It survived validation better than any other filter.
+
+**Flag week barely matters.** Early 1.31, mid 1.73, late 1.81. The
+hypothesis that week 3 and week 15 flags differ in *production* terms is not
+supported; stratifying answered it, which is why it was worth stratifying.
+
+### The uncomfortable finding
+
+**`priced` outperforms `unexplained` in every cell.** Injury-driven role
+changes predict production *better* than unexplained ones — 2.26 vs 1.66 on
+the holdout, and the gap holds across both sets and every filter.
+
+This contradicts the premise the tool is built on. An injury-driven vacancy
+is a real, legible role change; an unexplained delta is more often game
+script. The injury join is an excellent *detector* and its use as a *filter*
+discards the most predictive category.
+
+The honest limit: this backtest measures **production, not acquirability**.
+nflverse carries no rostership or ADP, so it cannot measure whether a priced
+player could actually have been acquired — which is the entire reason to
+prefer unexplained ones. The finding is real; the conclusion it appears to
+support is not yet earned.
+
+- [ ] Resolve by joining a rostership or ADP source. Until then, treat
+      `teammate_out_durable` as the template: priced but not reverting, and
+      surfaced rather than filtered.
+
+---
+
 ## A design principle
 
 When the data is ambiguous, the output should say so rather than silently
