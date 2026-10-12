@@ -198,16 +198,13 @@ v1 uses snap share, target share, and air yards share as the usage set.
 - [x] Injury report join — gap injuries, mid-game exits, teammate availability
 - [x] Vacancy duration — separates a rental role from a durable one
 
-**Bugs, ahead of the queue.** Both are corrupting `vacancy_weeks` now.
-
-- [ ] Coalesce `report_primary_injury` → `practice_primary_injury`.
-      811 of 1413 rows (57%) have no report field but do have the practice
-      one, so `injury_duration()` buckets them all under `"unspecified"` and
-      computes one shared streak across unrelated injuries. The two fields
-      disagree in 1 of 600 rows where both exist, so the fallback is safe.
-- [ ] Exclude `"Not injury related - resting player"` from injury logic.
-      It is a veteran rest day on a healthy player. Counting it toward a
-      vacancy streak reads a team's comfort as a team's problem.
+- [x] Coalesce `report_primary_injury` → `practice_primary_injury`.
+      57% of rows carried only the practice field, so `injury_duration()`
+      bucketed them under `"unspecified"` and computed one shared streak
+      across unrelated injuries. Identified injuries: 601 → 1266 of 1413.
+- [x] Exclude `"Not injury related - resting player"` from injury logic
+      (147 rows) and gate `dnp` on it, so a rested veteran is no longer
+      tagged `self_injured`. dnp: 373 → 331.
 
 **Injury identity resolution.** The streak currently keys on an exact body
 part string, so any re-label resets it to 1 — a confident answer to an
@@ -229,14 +226,36 @@ when you would want to trust it. 159 week-to-week body part changes in
       between one worsening situation and two separate ones. Surface the row
       with a caveat rather than inventing a number.
 
-**Later.**
+**Next, and it should probably jump the queue.**
 
-- [ ] Route participation (needs a PFF source)
-- [ ] Consecutive vs. cumulative games missed — `games_missed` currently
-      counts cumulatively, so two unrelated absences in weeks 1 and 9 score
-      the same as two straight weeks out
-- [ ] Offense quality context layer
-- [ ] Historical backtest — did flagged players outproduce their rank over the following three weeks?
+- [ ] **Historical backtest.** Everything above is tuned against a handful
+      of 2026 cases we already knew the answer to. That is circular. The
+      question the tool cannot currently answer is whether a flagged player
+      actually outproduces his pre-flag baseline over the following three
+      weeks, and whether `unexplained` beats `priced` at doing it.
+      Until that runs, every threshold in this repo is a guess that happens
+      to fit five examples. nflverse has seasons back to 1999.
+
+**Correctness, known and unfixed.**
+
+- [ ] Consecutive vs. cumulative games missed — `games_missed` counts
+      cumulatively, so two unrelated absences in weeks 1 and 9 score the
+      same as two straight weeks out
+- [ ] `confirmed_trend` requires same-direction movement across two
+      appearances, so a player who jumps once and then holds flat fails
+      confirmation. "Jump then hold" is arguably the more common shape of a
+      real promotion than "climb steadily"
+- [ ] `MIN_SNAPS = 5` and the `ALERT_PP / 2` floor in `_tier()` are both
+      arbitrary. The backtest is what would set them
+
+**Coverage.**
+
+- [ ] Route participation (needs a PFF source) — the single most
+      predictive field and the one the free feed does not carry
+- [ ] Offense quality context layer — plays per game, points per drive,
+      PROE. EPA alone answers "is this offense good?" when the question is
+      "does this offense generate opportunity in my player's phase?"
+- [ ] Red zone and goal-line usage, tracked separately from total volume
 
 ---
 
