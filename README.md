@@ -439,6 +439,45 @@ than merely real.
 
 `--corroborated-only` on the CLI.
 
+### In-game exit detection (`exits.py`)
+
+The injury report is published before kickoff, so a player hurt during a game
+has no row that week. Play-by-play participation gives each player's last
+offensive snap relative to his team's play count, which finds those exits
+directly.
+
+Validated against the following week's injury report (2025, ≥10 snaps):
+
+| exit_frac | n | on report next week |
+|---|---|---|
+| <0.50 | 131 | **58.0%** |
+| 0.50–0.65 | 110 | 52.7% |
+| 0.65–0.75 | 188 | 28.7% |
+| 0.75–0.90 | 1239 | 14.5% |
+| 0.90+ | 9226 | 11.5% |
+| *baseline* | | *13.2%* |
+
+Monotonic. A player whose last snap came before 65% of his team's plays is
+roughly 4x likelier to land on next week's report.
+
+**But it does not improve waiver flags**, which was the original motive:
+
+| filter | tune hit | holdout hit |
+|---|---|---|
+| baseline (25pp confirmed) | 59.0% | 53.9% |
+| + teammate exited in-game | 51.9% | 51.2% |
+| + no teammate exit | 60.4% | 54.9% |
+
+Worse in both sets. Higher lift (2.34 vs 1.52) with lower hit rate means
+those flags pay big occasionally and usually do not — variance, not
+reliability. Most in-game exits are minor and the vacancy closes.
+
+**Use it for the other thing:** knowing when your *own* player got hurt
+before the report says so. A hold/sell and lineup signal, not a waiver one.
+
+Limitation: participation data covers 2016–2025 only, so this is
+retrospective until nflverse publishes a current-season file.
+
 ### Negative result: paired teammate vacancy
 
 Tested whether the in-game blind spot could be covered with snap data alone,
@@ -466,6 +505,16 @@ Kept in `backtest.py` as `add_vacated_share()` with the finding documented
 inline, so the idea does not get re-derived and the tune numbers do not get
 mistaken for validation. To revisit: per-bucket samples are 21–112, too
 small to resolve. Pool more seasons or model it continuously.
+
+### Why both vacancy features failed
+
+They fail for the same reason, and it is the useful finding:
+
+**The riser's own snap jump already encodes the vacancy.** If a backup played
+92% of snaps, that 92% *is* the vacancy. Features describing *why* it opened
+are redundant with the effect already being measured.
+
+Worth remembering before building a third one.
 
 ---
 
