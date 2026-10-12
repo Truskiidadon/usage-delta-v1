@@ -226,15 +226,9 @@ when you would want to trust it. 159 week-to-week body part changes in
       between one worsening situation and two separate ones. Surface the row
       with a caveat rather than inventing a number.
 
-**Next, and it should probably jump the queue.**
+**Next, and it should jump the queue.**
 
-- [ ] **Historical backtest.** Everything above is tuned against a handful
-      of 2026 cases we already knew the answer to. That is circular. The
-      question the tool cannot currently answer is whether a flagged player
-      actually outproduces his pre-flag baseline over the following three
-      weeks, and whether `unexplained` beats `priced` at doing it.
-      Until that runs, every threshold in this repo is a guess that happens
-      to fit five examples. nflverse has seasons back to 1999.
+- [ ] **Historical backtest.** Design settled, not yet built — see below.
 
 **Correctness, known and unfixed.**
 
@@ -256,6 +250,87 @@ when you would want to trust it. 159 week-to-week body part changes in
       PROE. EPA alone answers "is this offense good?" when the question is
       "does this offense generate opportunity in my player's phase?"
 - [ ] Red zone and goal-line usage, tracked separately from total volume
+
+---
+
+## Backtest design
+
+Every threshold in this repo — 9 and 15 percentage points, `MIN_SNAPS = 5`,
+two-week confirmation, two-week vacancy — was chosen to fit five 2026 cases
+whose answers we already knew. That is a curve fit, not a validation. This
+is the design to replace it.
+
+**Window.** 2012–2025. Snap counts do not exist before 2012, which is the
+binding constraint; the injury feed goes back to 2009 and weekly stats to
+1999, but the tool's spine is snap share.
+
+### Two outcomes, measured separately
+
+| Question | Outcome | What it tests |
+|---|---|---|
+| Did the role hold? | snap share, W+1..W+4 | the detector |
+| Did it pay? | PPR points per game, W+1..W+4 | the thesis that role predicts production |
+
+The decomposition is the point. If roles hold but points do not follow, the
+detector works and the premise is wrong. If roles do not hold, it is
+detecting noise. One metric cannot distinguish those.
+
+### Three comparison groups
+
+| Group | What it tests |
+|---|---|
+| unexplained flags | the edge |
+| priced flags (injury-driven) | whether the injury join earns its keep |
+| matched unflagged controls | regression to the mean |
+
+The control group is not optional. A player flagged for a snap-share jump
+almost by definition had a low baseline, so comparing him to his own prior
+three weeks is **mechanically biased toward success** — regression to the
+mean alone produces a positive result. Controls are matched on position and
+prior production.
+
+If unexplained beats controls and priced does not, the whole design
+validates at once. If priced also beats controls, the injury filter is
+discarding signal.
+
+### Settled parameters
+
+- **Primary window: 4 games**, per game rather than cumulative. Ten games
+  would only be testable for flags in weeks 2–8, which would study the
+  early season exclusively — the noisiest regime, when roles are still
+  forming.
+- **Stratify by flag week**: early (2–6), mid (7–12), late (13–17).
+  A week 3 flag and a week 15 flag have different implications; stratifying
+  *answers* that rather than assuming it.
+- **Secondary: rest-of-season**, reported alongside, where there is room.
+- **Players injured during the outcome window stay in the sample.**
+  Excluding them deletes the downside and inflates the result. Report both
+  numbers.
+
+### The null, committed in advance
+
+**If unexplained flags do not beat matched controls by at least 0.5 PPR per
+game, the screen is not earning its complexity.**
+
+Writing this down before seeing results is the point. Deciding afterward
+that some number is meaningful is how motivated reasoning gets in.
+
+### Holdout
+
+Tune on 2012–2019. Validate once, at the end, on 2020–2025. Do not look at
+the holdout while tuning. Sweeping thresholds across all seasons and
+reporting the best one measures fit to history, not predictive power.
+
+2020 is a COVID season — no preseason, modified practice rules, inflated
+injury reports. Flag it as a control and check whether results move.
+
+### Reporting
+
+Report **hit rate alongside mean effect**. A mean lift of 1.4 does not mean
+any given flagged player gains 1.4; the distribution decides whether to act
+on a specific flag. Action bands get set after the spread is visible, not
+before — and 3.5 PPR per game is a WR3 becoming a WR1, so a top tier set
+there may never fire.
 
 ---
 
