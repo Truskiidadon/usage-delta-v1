@@ -195,11 +195,61 @@ v1 uses snap share, target share, and air yards share as the usage set.
 - [x] v1: snap share / target share / air yards share diff, all skill positions
 - [x] Confirmation logic (two-week hold)
 - [x] Game context flag (team play volume)
-- [ ] **Injury report join** — the next and most important piece
+- [x] Injury report join — gap injuries, mid-game exits, teammate availability
+- [x] Vacancy duration — separates a rental role from a durable one
+
+**Bugs, ahead of the queue.** Both are corrupting `vacancy_weeks` now.
+
+- [ ] Coalesce `report_primary_injury` → `practice_primary_injury`.
+      811 of 1413 rows (57%) have no report field but do have the practice
+      one, so `injury_duration()` buckets them all under `"unspecified"` and
+      computes one shared streak across unrelated injuries. The two fields
+      disagree in 1 of 600 rows where both exist, so the fallback is safe.
+- [ ] Exclude `"Not injury related - resting player"` from injury logic.
+      It is a veteran rest day on a healthy player. Counting it toward a
+      vacancy streak reads a team's comfort as a team's problem.
+
+**Injury identity resolution.** The streak currently keys on an exact body
+part string, so any re-label resets it to 1 — a confident answer to an
+ambiguous question, and it fails in the direction that matters: a chronic
+problem re-labeled once reads as fresh, understating durability exactly
+when you would want to trust it. 159 week-to-week body part changes in
+2026 so far (Mike Evans Hip → Ribs, Juszczyk Finger → Knee).
+
+- [ ] Group body parts into regions (Foot/Ankle/Toe/Heel; Knee/Quad/
+      Hamstring/Groin) and compare regions, not strings. A re-label inside
+      a region continues the streak; across regions it is a new injury.
+      Resolves most of the 159 without needing a pending state.
+- [ ] Secondary injury as a duration-confidence multiplier, not a second
+      streak. Rare (44 report / 91 practice rows) but a player carrying two
+      injuries has a materially longer expected absence.
+- [ ] `duration_confidence: low | medium | high`, surfaced in output. For
+      what regions and multipliers cannot resolve — a body part jumping
+      regions *while* a secondary injury is present is genuinely ambiguous
+      between one worsening situation and two separate ones. Surface the row
+      with a caveat rather than inventing a number.
+
+**Later.**
+
 - [ ] Route participation (needs a PFF source)
-- [ ] Teammate-availability join
+- [ ] Consecutive vs. cumulative games missed — `games_missed` currently
+      counts cumulatively, so two unrelated absences in weeks 1 and 9 score
+      the same as two straight weeks out
 - [ ] Offense quality context layer
 - [ ] Historical backtest — did flagged players outproduce their rank over the following three weeks?
+
+---
+
+## A design principle
+
+When the data is ambiguous, the output should say so rather than silently
+resolving in one direction.
+
+Every ambiguity in this tool has a default, and defaults are not neutral.
+A body-part re-label currently resolves toward "new injury" every time,
+which is a systematic bias toward understating vacancy durability. The fix
+is not always a better guess — sometimes it is surfacing the uncertainty
+and letting the reader apply judgment.
 
 ### Current state
 
@@ -211,12 +261,22 @@ v1 runs end to end on live data. Validated against known 2026 cases:
 | Jaylen Warren | 37 → 71 → 90 → 97 → 87% | Fires actionable in W2, confirms in W3 |
 | Denzel Boston | 92 → 93 → 89 → 95 → 91% | Silent — role never moved, only production |
 
-**The known gap:** Week 5 produces 159 raw flags, and the largest are
-injury churn — players returning (Jefferson 12→89%, Chase 20→89%) or
-exiting mid-game (Concepcion 92→16%, Harris 93→45%). All priced within
-hours of the injury report.
+**The funnel.** Week 5 produces 159 raw flags. The injury join and the
+confirmation filter cut that to 21 worth reading:
 
-Two-week confirmation cuts 159 → 30 and surfaces real role changes
-(Germie Bernard 40 → 92% at a 30% target share; the Houston backfield
-flipping from Montgomery to Woody Marks). But confirmation is a blunt
-proxy. The injury join is what makes this a tool rather than a feed.
+| Stage | Rows |
+|---|---|
+| flagged | 159 |
+| unexplained by injury | 127 |
+| + held two appearances | 20 |
+| + normal game context | 17 |
+| + durable teammate vacancy | 21 |
+
+**The structural limitation.** The injury report is published before
+kickoff, so a player hurt *during* a game has no row that week. KC
+Concepcion (92→16%, concussion) and Tre Harris (93→45%, hamstring) both
+sit in the Week 5 unexplained bucket for this reason. They appear on the
+following week's report, which `lookahead` picks up — Week 4 shows 10
+`self_exited` tags because Week 5's report exists to look back from. For
+the current week it is unavailable, so treat a large unexplained *decline*
+as suspect and check the news.
