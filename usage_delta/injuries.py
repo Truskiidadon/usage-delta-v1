@@ -42,7 +42,9 @@ INJURIES = f"{NFLVERSE}/injuries/injuries_{{season}}.parquet"
 # Statuses that meaningfully reduce or eliminate a player's workload.
 SIDELINED = {"Out", "Doubtful"}
 LIMITED = {"Questionable"}
-NON_INJURY = NON_INJURY = {"Not injury related - resting player"}
+# Values that appear in the injury fields but are not injuries. A rested
+# veteran signals the team is comfortable, not that someone is hurt.
+NON_INJURY = {"Not injury related - resting player"}
 
 # A teammate only explains a delta if he was a real competitor for the
 # snaps, not a fourth-stringer who happened to be on the report.
@@ -58,11 +60,24 @@ def load_injuries(season: int, refresh: bool = False) -> pd.DataFrame:
     )
     df = df[df["season_type"] == "REG"].copy()
 
-    df["injury_detail"] = df["report_primary_injury"].fillna(df["practice_primary_injury"])
-    df["is_injury"] = df["injury_detail"].notna() & ~df["injury_detail"].isin(NON_INJURY)
-    df["dnp"] = (df["practice_status"] == "Did Not Participate In Practice") & df["is_injury"]
-    # A DNP with no game-status designation still signals a reduced week.
-    df["dnp"] = df["practice_status"] == "Did Not Participate In Practice"
+    df["sidelined"] = df["report_status"].isin(SIDELINED)
+    df["limited"] = df["report_status"].isin(LIMITED)
+
+    # What counts as an injury, decided once here rather than in each
+    # consumer. 57% of rows carry only the practice field, so the report
+    # field alone leaves most injuries unidentified.
+    df["injury_detail"] = df["report_primary_injury"].fillna(
+        df["practice_primary_injury"]
+    )
+    df["is_injury"] = df["injury_detail"].notna() & ~df["injury_detail"].isin(
+        NON_INJURY
+    )
+
+    # A DNP signals a reduced week -- but only when it is an actual injury.
+    # A rested veteran also does not practice.
+    df["dnp"] = (
+        df["practice_status"] == "Did Not Participate In Practice"
+    ) & df["is_injury"]
 
     return df[
         [
@@ -181,7 +196,7 @@ def injury_duration(injuries: pd.DataFrame) -> pd.DataFrame:
         df.groupby(["season", "gsis_id"])["sidelined"].cumsum().astype(int)
     )
 
-    return df)
+    return df
 
 
 def _teammate_availability(
