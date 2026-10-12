@@ -144,9 +144,9 @@ def report(
         f"{metric}_tier",
         "offense_snaps_delta",
         "context_ok",
+        "confirmed",
+        "injury_tag",
+        "priced",
     ]
-    if "confirmed" in out.columns:
-        cols.append("confirmed")
-
     cols = [c for c in cols if c in out.columns]
     return out[cols].sort_values(f"{metric}_delta", key=abs, ascending=False)
