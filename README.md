@@ -396,6 +396,50 @@ support is not yet earned.
       `teammate_out_durable` as the template: priced but not reverting, and
       surfaced rather than filtered.
 
+### Where the biggest returns actually came from
+
+Ranked by realized gain, the top flags across 13 seasons are a who's who of
+league-winning waiver adds — C.J. Anderson 2014, Charcandrick West 2015,
+DeAngelo Williams 2015, Mike Davis 2020, Chuba Hubbard 2021, D'Onta Foreman
+2022. Median gain across all 485 qualifying flags is +1.97 PPR/game.
+
+Every one of those is an injury vacancy, and **every one is tagged
+`unexplained`** — because the starter went down mid-game and never appeared
+on a pre-game report.
+
+So `unexplained` is not a clean bucket. It is a mix of noise and the single
+most valuable category: vacancies the market has not priced by Tuesday,
+because the injury report has not caught up either. Separating those two is
+the real opportunity, and it reframes the `priced` finding above.
+
+### Negative result: paired teammate vacancy
+
+Tested whether the in-game blind spot could be covered with snap data alone,
+by detecting the paired fall that accompanies a rise. Share within a
+position group is close to zero-sum, so a vacancy should be visible without
+any injury feed — and would be available Tuesday.
+
+| vacated_share | tune | holdout |
+|---|---|---|
+| none | 3.64 (n=28) | 1.12 (n=21) |
+| <30pp | 1.20 | 2.01 |
+| 30–60pp | 1.98 | 1.36 |
+| 60pp+ | 2.73 | 1.84 |
+
+**Did not replicate.** The tune set is cleanly monotonic above `none`
+(1.20 → 1.98 → 2.73). The holdout is not — `<30pp` lands above both middle
+buckets and the ordering collapses. Tuning alone would have shipped this.
+
+Hit rate in the 60pp+ bucket is the one thread that survives (66% tune, 58%
+holdout), so the mechanism may be real but smaller than it looked. The
+likely explanation is that the signal is already captured upstream: a
+confirmed 25pp rise usually *is* a vacancy.
+
+Kept in `backtest.py` as `add_vacated_share()` with the finding documented
+inline, so the idea does not get re-derived and the tune numbers do not get
+mistaken for validation. To revisit: per-bucket samples are 21–112, too
+small to resolve. Pool more seasons or model it continuously.
+
 ---
 
 ## A design principle

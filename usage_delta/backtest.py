@@ -180,3 +180,92 @@ def compare_by(panel: pd.DataFrame, by: str, col: str = "outcome_ppr") -> pd.Dat
         r[by] = key
         out.append(r)
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+
+
+# ---------------------------------------------------------------------------
+# NEGATIVE RESULT — paired teammate vacancy
+#
+# Idea: snap share within a position group is close to zero-sum, so a sharp
+# rise in player B is mechanically paired with a fall in player A. The
+# pairing itself should be the signal -- it says a real role was vacated,
+# rather than the riser just collecting snaps in a long game. The appeal is
+# that it is computable on Tuesday from snap counts alone, with no injury
+# report, which is exactly the blind spot where the biggest historical
+# returns live (Charcandrick West / Jamaal Charles, DeAngelo Williams /
+# Le'Veon Bell, Mike Davis / McCaffrey -- all tagged `unexplained` because
+# the starter went down mid-game and never hit a pre-game report).
+#
+# First implementation missed its own best case: a player who is inactive
+# has no snap row at all, so he contributes no negative delta. The version
+# below counts both reduced roles and outright absences.
+#
+# RESULT: did not replicate. Lift by vacated_share bucket --
+#
+#   bucket     tune    holdout
+#   none       3.64     1.12     (n=28 / n=21, too small to read)
+#   <30pp      1.20     2.01
+#   30-60pp    1.98     1.36
+#   60pp+      2.73     1.84
+#
+# The tune set is cleanly monotonic above `none` (1.20 -> 1.98 -> 2.73),
+# which is the shape you want. The holdout does not reproduce it: <30pp
+# lands above both middle buckets and the ordering collapses. Tuning alone
+# would have shipped this.
+#
+# The one thread that survives: hit rate is highest in the 60pp+ bucket in
+# both sets (66% tune, 58% holdout), more consistently than lift. Weak
+# evidence the mechanism is real but smaller than the tune set implied.
+#
+# Likely explanation: the signal is already largely captured upstream. A
+# confirmed 25pp rise usually IS a vacancy, so conditioning on vacated share
+# adds less than it appears to.
+#
+# To revisit properly: per-bucket samples here are 21-112, too small to
+# resolve. Pool more seasons, or treat vacated_share as a continuous feature
+# in a model rather than bucketing it.
+# ---------------------------------------------------------------------------
+
+VACANCY_MIN_ROLE = 0.30
+
+
+def add_vacated_share(panel: pd.DataFrame) -> pd.DataFrame:
+    """Share given up by same-position teammates: reduced role or absent.
+
+    Retained for the follow-up described above. Not used by the live tool.
+    """
+    d = panel[["season", "week", "team", "position", "pfr_player_id",
+               "offense_pct", "offense_pct_prior"]].copy()
+
+    d["given"] = np.where(
+        d["offense_pct"] < d["offense_pct_prior"],
+        (d["offense_pct_prior"] - d["offense_pct"]).where(
+            d["offense_pct_prior"] >= VACANCY_MIN_ROLE, 0),
+        0.0,
+    )
+    present = (
+        d.groupby(["season", "week", "team", "position"], as_index=False)["given"]
+        .sum().rename(columns={"given": "pool_present"})
+    )
+
+    # Teammates who held a real role last week and did not appear this week.
+    last = panel[["season", "week", "team", "position", "pfr_player_id", "offense_pct"]].copy()
+    last["week"] += 1
+    last = last.rename(columns={"offense_pct": "prev_share"})
+    seen = panel[["season", "week", "pfr_player_id"]].assign(played=1)
+    gone = last.merge(seen, on=["season", "week", "pfr_player_id"], how="left")
+    gone = gone[gone["played"].isna() & (gone["prev_share"] >= VACANCY_MIN_ROLE)]
+    absent = (
+        gone.groupby(["season", "week", "team", "position"], as_index=False)["prev_share"]
+        .sum().rename(columns={"prev_share": "pool_absent"})
+    )
+
+    out = (
+        panel.merge(present, on=["season", "week", "team", "position"], how="left")
+             .merge(absent, on=["season", "week", "team", "position"], how="left")
+             .merge(d[["season", "week", "pfr_player_id", "given"]],
+                    on=["season", "week", "pfr_player_id"], how="left")
+    )
+    out["vacated_share"] = (
+        out["pool_present"].fillna(0) + out["pool_absent"].fillna(0) - out["given"].fillna(0)
+    ).clip(lower=0)
+    return out
