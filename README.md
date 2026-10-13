@@ -106,9 +106,13 @@ Two separate attempts to detect *why* a role opened both failed, and they failed
 
 Both are retained in the codebase with results documented inline, so the idea is not re-derived and tune-set numbers are not mistaken for validation.
 
-### The exit detector has a different use
+### The exit detector has a different use, which it cannot currently serve
 
-Knowing when your own player left a game early, before the injury report confirms it. That is a hold, sell, and lineup signal rather than a waiver one.
+Knowing when a player left a game early, before the injury report confirms it, is a hold, sell and lineup signal rather than a waiver one. That is the use the detector was kept for.
+
+It cannot do it. nflverse's participation feed ends after 2025 and the current-season file returns 404, so `exits.py` works only on history. Mid-game exits in a live week are therefore invisible to this repo entirely, and the gap is not theoretical: across one week of 2026, three separate flags in this tool were explained by exits it could not see — a receiver's single target that was a finger injury, a back's truncated snap share that was a hip, and a decline tagged `unexplained` that was neither. Every one had to be supplied by a human who watched the game.
+
+Until a live participation source exists, mid-game exits are a known blind spot filled manually or not at all. Treat any large single-week decline as possibly an exit rather than a role change, and check the news before acting on it.
 
 ---
 

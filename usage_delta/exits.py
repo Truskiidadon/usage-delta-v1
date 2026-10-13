@@ -19,8 +19,11 @@ snap jump already encodes the vacancy. If a backup played 92% of snaps, that
 92% IS the vacancy. Cause-of-vacancy features are redundant with the effect
 being measured. Numbers in the README.
 
-LIMITATION. Participation data covers 2016-2025 only, so this is
-retrospective until a current-season file is published.
+NOT USABLE ON THE CURRENT SEASON. nflverse's pbp_participation ends after
+2025 and the 2026 file returns 404, so everything here is retrospective.
+The live use above is unavailable until a current-season source exists,
+which means mid-game exits in a live week are invisible to this repo and
+have to be supplied by someone who watched the game.
 """
 
 import pandas as pd
