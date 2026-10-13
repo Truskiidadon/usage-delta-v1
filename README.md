@@ -174,15 +174,16 @@ The separating test for `rental` versus `riser` is retrospective and cheap: comp
 
 A second tool, not an extension of this one. This repo answers "whose role is changing" from league-wide data. Roster construction answers "what should I start" given one roster, which is a different input, a different output, and a different validation problem. Keeping them separate protects this repo's evidence standard; folding them together would mix a validated screen with unvalidated heuristics.
 
-Components, ranked by how much evidence they would need:
+A roster synergy rating built on two inputs, and deliberately only two.
 
-**Bye-week conflict detection.** Deterministic. A roster with two tight ends sharing a bye has a guaranteed zero, and that is arithmetic rather than prediction. Cheapest real value in this section and needs no backtest.
+**Bye structure.** Deterministic, no model required. Score a roster by the weeks in which it cannot field a competitive lineup because startable players at the same position share a bye. Two tight ends on the same bye is a guaranteed zero in a starting slot, and that is arithmetic. Cheapest real value in this section.
 
-**Correlation and stacking.** Whether pairing a quarterback with his own receiver raises a lineup's ceiling at the cost of its floor is testable against the panel already built here: compute within-lineup covariance by team and compare the variance of stacked and unstacked lineups. A genuine research question with data on hand.
+**Correlation.** Players on the same offense do not score independently: a quarterback and his own receiver rise and fall together, and two running backs in one backfield are close to mutually exclusive. The effect is on lineup *variance* rather than expected points, which makes the rating conditional rather than absolute — correlation raises a ceiling and thins a floor, so a projected underdog wants it and a favorite does not. A single scalar "synergy score" that ignores which side of that a manager is on would be worse than no score. Testable against the panel already built here: within-lineup covariance by team, comparing the distribution of stacked and unstacked lineups.
 
-**Matchup adjustment.** Defensive points-allowed-by-position is dominated by strength of schedule and reverts hard. Expect a weak result; worth testing only to decide against it with evidence.
+Deliberately excluded:
 
-**Week-bucket tags.** The early/mid/late split was already tested in this repo and did not separate: 1.31, 1.73 and 1.81 PPR of lift, within 0.5 of each other. That is a negative result for *detection* and does not transfer to lineup decisions either way, so any roster-construction use needs its own hypothesis and its own test rather than inheriting these buckets. Reusing a bucket that failed its original test because the labels already exist is how a tool starts fitting noise.
+- **Week-of-season buckets.** Already tested in this repo and not supported: 1.31, 1.73 and 1.81 PPR of lift across early, mid and late flags, within 0.5 of each other. Reusing a failed split in a new context because the labels already exist is how a tool starts fitting noise.
+- **Matchup adjustment.** Defensive points-allowed-by-position is dominated by strength of schedule and reverts hard. Out of the basis until something shows otherwise.
 
 ---
 
