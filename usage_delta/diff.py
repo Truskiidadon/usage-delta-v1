@@ -168,6 +168,10 @@ def report(
         "player",
         "position",
         "team",
+        # Join key for attention.py. Carried through even though it is noise
+        # on screen, because without it a flag table cannot be matched to any
+        # other source.
+        "gsis_id",
         f"{metric}_prior",
         metric,
         f"{metric}_delta",
