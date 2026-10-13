@@ -182,48 +182,26 @@ def compare_by(panel: pd.DataFrame, by: str, col: str = "outcome_ppr") -> pd.Dat
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
 
 
-# ---------------------------------------------------------------------------
-# NEGATIVE RESULT — paired teammate vacancy
+# NEGATIVE RESULT -- paired teammate vacancy.
 #
-# Idea: snap share within a position group is close to zero-sum, so a sharp
-# rise in player B is mechanically paired with a fall in player A. The
-# pairing itself should be the signal -- it says a real role was vacated,
-# rather than the riser just collecting snaps in a long game. The appeal is
-# that it is computable on Tuesday from snap counts alone, with no injury
-# report, which is exactly the blind spot where the biggest historical
-# returns live (Charcandrick West / Jamaal Charles, DeAngelo Williams /
-# Le'Veon Bell, Mike Davis / McCaffrey -- all tagged `unexplained` because
-# the starter went down mid-game and never hit a pre-game report).
+# Idea: snap share within a position group is near zero-sum, so a rise in B
+# is paired with a fall in A. The pairing should say a real role was vacated
+# rather than the riser collecting snaps in a long game -- and it is
+# computable Tuesday from snap counts alone, with no injury report.
 #
-# First implementation missed its own best case: a player who is inactive
-# has no snap row at all, so he contributes no negative delta. The version
-# below counts both reduced roles and outright absences.
+# Did not replicate. The tune set was cleanly monotonic in vacated_share; the
+# holdout was not. Tuning alone would have shipped it. Table in the README.
 #
-# RESULT: did not replicate. Lift by vacated_share bucket --
+# Likely because the signal is already captured upstream: a confirmed 25pp
+# rise usually IS a vacancy. The in-game exit detector in exits.py fails the
+# same way, which is the more general finding -- the riser's own snap jump
+# already encodes the vacancy.
 #
-#   bucket     tune    holdout
-#   none       3.64     1.12     (n=28 / n=21, too small to read)
-#   <30pp      1.20     2.01
-#   30-60pp    1.98     1.36
-#   60pp+      2.73     1.84
+# First version also missed its own best case: an inactive player has no snap
+# row, so contributes no negative delta. Fixed below; conclusion unchanged.
 #
-# The tune set is cleanly monotonic above `none` (1.20 -> 1.98 -> 2.73),
-# which is the shape you want. The holdout does not reproduce it: <30pp
-# lands above both middle buckets and the ordering collapses. Tuning alone
-# would have shipped this.
-#
-# The one thread that survives: hit rate is highest in the 60pp+ bucket in
-# both sets (66% tune, 58% holdout), more consistently than lift. Weak
-# evidence the mechanism is real but smaller than the tune set implied.
-#
-# Likely explanation: the signal is already largely captured upstream. A
-# confirmed 25pp rise usually IS a vacancy, so conditioning on vacated share
-# adds less than it appears to.
-#
-# To revisit properly: per-bucket samples here are 21-112, too small to
-# resolve. Pool more seasons, or treat vacated_share as a continuous feature
-# in a model rather than bucketing it.
-# ---------------------------------------------------------------------------
+# To revisit: per-bucket samples are 21-112, too small to resolve. Pool more
+# seasons or model vacated_share continuously rather than bucketing it.
 
 VACANCY_MIN_ROLE = 0.30
 

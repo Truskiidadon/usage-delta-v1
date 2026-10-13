@@ -4,46 +4,23 @@ The injury report is published before kickoff, so a player hurt during a game
 has no row that week. This finds those exits directly: the last offensive play
 a player appeared in, relative to how many his team ran.
 
-VALIDATION (2025, players with >=10 snaps). Probability of appearing on the
-FOLLOWING week's injury report, by exit fraction:
+Validated against the following week's injury report -- a player whose last
+snap came before 65% of his team's plays is ~4x likelier to appear on it.
+Table in the README.
 
-    exit_frac     n      on report next week
-    <0.50         131          58.0%
-    0.50-0.65     110          52.7%
-    0.65-0.75     188          28.7%
-    0.75-0.90    1239          14.5%
-    0.90+        9226          11.5%
-    baseline                   13.2%
+USE IT FOR knowing when your own player got hurt before the report says so:
+a hold/sell and lineup signal.
 
-Monotonic, and a player whose last snap came before 65% of his team's plays
-is roughly 4x likelier to land on next week's report. The detector works.
+NOT FOR improving waiver flags, which was the original motive. Adding
+"a teammate exited" makes those flags WORSE in both the tune and holdout
+sets. It fails for the same reason the paired-vacancy feature in backtest.py
+failed, and the shared reason is the finding worth keeping: the riser's own
+snap jump already encodes the vacancy. If a backup played 92% of snaps, that
+92% IS the vacancy. Cause-of-vacancy features are redundant with the effect
+being measured. Numbers in the README.
 
-WHAT IT IS NOT FOR. The original motive was to cover the blind spot where the
-biggest historical returns live -- Charcandrick West, DeAngelo Williams, Mike
-Davis, all beneficiaries of a starter going down mid-game and all tagged
-`unexplained` because no pre-game report existed. Knowing a teammate exited
-turns out NOT to improve those flags:
-
-    filter                        tune hit   holdout hit
-    baseline (25pp confirmed)       59.0%       53.9%
-    + teammate exited in-game       51.9%       51.2%
-    + no teammate exit              60.4%       54.9%
-
-Worse in both sets. Lift is higher (2.34 vs 1.52) while hit rate is lower,
-so those flags pay big occasionally and usually do not -- variance, not
-reliability. Most in-game exits are minor and the vacancy closes.
-
-This fails for the same reason the paired-vacancy feature in backtest.py
-failed, and the shared reason is the useful finding: THE RISER'S OWN SNAP
-JUMP ALREADY ENCODES THE VACANCY. If a backup played 92% of snaps, that 92%
-IS the vacancy. Cause-of-vacancy features are redundant with the effect
-being measured.
-
-WHAT IT IS FOR. Knowing when YOUR OWN player got hurt, before the injury
-report says so -- a hold/sell and lineup signal rather than a waiver one.
-
-LIMITATION. Participation data exists for 2016-2025 only. No current-season
-file until nflverse publishes it, so this is retrospective until then.
+LIMITATION. Participation data covers 2016-2025 only, so this is
+retrospective until a current-season file is published.
 """
 
 import pandas as pd

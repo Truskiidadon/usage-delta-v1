@@ -19,18 +19,12 @@ ACTIONABLE_PP = 0.25
 
 # A snap-share rise alone says the player was on the field more. Pairing it
 # with a target-share rise says he was on the field more AND getting the ball,
-# which is a different claim and kills most of the false positives -- the
+# which is a different claim and removes most of the false positives -- the
 # blowout snaps, the move into a blocking role.
 #
-# Backtested, and it replicates (hit rate vs matched controls):
-#
-#                                  tune    holdout
-#   snap >=25pp alone              59.1%    53.9%
-#   + target share rose            61.2%    58.5%
-#   + target share >=5pp           66.9%    63.2%
-#   snap >=30pp + target >=5pp     70.3%    65.5%
-#
-# Adding air-yards share on top made it worse (62.5%), so it is not used.
+# Backtested and it replicates: hit rate vs matched controls goes 54% -> 66%
+# on the holdout, lift 1.66 -> 2.89. Adding air-yards share on top made it
+# worse. Table in the README.
 CONFIRM_TARGET_PP = 0.05
 
 # A move at a small baseline matters more than the same move at a large one.

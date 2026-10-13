@@ -1,16 +1,12 @@
 """Pull weekly NFL usage data from nflverse.
 
-nflverse publishes season files as parquet on GitHub Releases. No API key,
-no rate limit. We read them directly rather than going through a wrapper
-library so the data source stays visible and the dependency list stays short.
+nflverse publishes season files as parquet on GitHub Releases -- no API key,
+no rate limit. Read directly rather than through a wrapper library so the
+data source stays visible and the dependency list stays short.
 
-Two sources get joined:
-  snap_counts      -> offense_snaps, offense_pct    (keyed on pfr_player_id)
-  stats_player_week -> targets, target_share, air_yards_share (keyed on gsis_id)
-
-They use different player IDs, so players.parquet provides the crosswalk.
-Join on IDs, never names: the snap file lists "Tre Harris", other sources
-list "Tre' Harris".
+Snap counts are keyed on pfr_player_id and weekly stats on gsis_id, so
+players.parquet provides the crosswalk. Join on IDs, never names: the snap
+file lists "Tre Harris", other sources list "Tre' Harris".
 """
 
 from pathlib import Path
