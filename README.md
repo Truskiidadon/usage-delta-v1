@@ -116,6 +116,8 @@ Knowing when your own player left a game early, before the injury report confirm
 
 **Acquirability is unmeasured.** Injury-driven flags outperform unexplained ones in every cell, 2.26 versus 1.66. That appears to contradict the tool's premise. But nflverse carries no rostership or ADP data, so the backtest cannot test whether a publicly-known player could actually have been acquired, which is the entire reason to prefer unexplained ones. The finding is real; the conclusion it appears to support is not yet earned.
 
+`attention.py` is the instrument built to close this, and it cannot close it retroactively. Sleeper exposes add/drop counts for a recent window and nothing historical, so the panel starts from the first snapshot taken and accumulates forward. Until it has ten or so weeks of depth, the acquirability question stays open.
+
 **Mid-game exits are structurally invisible.** The injury report is published before kickoff, so a player hurt during a game has no row that week. He appears on the following week's report, which the lookahead option uses, but that is unavailable at Tuesday decision time.
 
 **Hit rate is 65%, not 90%.** Mean lift is driven partly by a tail of large wins. The tool is built for volume across a season, not conviction on any single flag.
@@ -160,7 +162,7 @@ Ordered by value. The first two are corrections to known defects and should land
 
 The separating test for `rental` versus `riser` is retrospective and cheap: compare the player's share in weeks the relevant teammate played against weeks he did not. A player whose two best weeks are exactly the two weeks a starter sat is a rental no matter how large the delta. This also subsumes the `teammate_out` / `teammate_out_durable` split, which is currently doing the job badly.
 
-**Rostership or ADP join.** Resolves the acquirability question and would determine whether injury-driven flags are actually tradeable or merely predictive. Highest value of the non-corrective work.
+**Accumulate the attention panel.** `attention.py` is written but the log is empty, and it is the only work here with a deadline attached — every Tuesday not snapshotted is a week of evidence that cannot be recovered. Once roughly ten weeks exist, three things become testable for the first time: whether unexplained flags are genuinely less owned than injury-driven ones, how many days pass between a flag and the market arriving, and whether lift survives a control for how widely held the player already was. That last one decides whether the central premise of this repo is true.
 
 **Route participation.** Requires a PFF source. The single most predictive missing input.
 
@@ -197,6 +199,7 @@ Python, pandas, pyarrow. No API keys.
 | nflverse weekly stats | 1999– | targets, air yards, PPR |
 | nflverse injuries | 2009– | context tagging |
 | nflverse participation | 2016–2025 | in-game exit detection |
+| Sleeper trending | current window only | market attention, acquirability |
 
 Snap counts key on `pfr_player_id` and weekly stats on `gsis_id`, so `players.parquet` provides the crosswalk. Joins are on IDs, never names: the snap file lists "Tre Harris" where other sources list "Tre' Harris".
 
@@ -210,5 +213,6 @@ Snap counts key on `pfr_player_id` and weekly stats on `gsis_id`, so `players.pa
 | `diff.py` | delta computation, tiering, confirmation, corroboration |
 | `injuries.py` | context tagging, vacancy duration |
 | `exits.py` | in-game exit detection |
+| `attention.py` | market add/drop counts, acquirability snapshots |
 | `backtest.py` | validation harness, documented negative results |
 | `cli.py` | command line interface |
