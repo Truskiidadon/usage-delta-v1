@@ -170,6 +170,20 @@ The separating test for `rental` versus `riser` is retrospective and cheap: comp
 
 **Injury identity resolution.** The duration streak keys on an exact body-part string, so any relabel resets it. Grouping body parts into regions would resolve most of the 159 observed relabels without needing a pending state.
 
+### Adjacent scope: roster construction
+
+A second tool, not an extension of this one. This repo answers "whose role is changing" from league-wide data. Roster construction answers "what should I start" given one roster, which is a different input, a different output, and a different validation problem. Keeping them separate protects this repo's evidence standard; folding them together would mix a validated screen with unvalidated heuristics.
+
+Components, ranked by how much evidence they would need:
+
+**Bye-week conflict detection.** Deterministic. A roster with two tight ends sharing a bye has a guaranteed zero, and that is arithmetic rather than prediction. Cheapest real value in this section and needs no backtest.
+
+**Correlation and stacking.** Whether pairing a quarterback with his own receiver raises a lineup's ceiling at the cost of its floor is testable against the panel already built here: compute within-lineup covariance by team and compare the variance of stacked and unstacked lineups. A genuine research question with data on hand.
+
+**Matchup adjustment.** Defensive points-allowed-by-position is dominated by strength of schedule and reverts hard. Expect a weak result; worth testing only to decide against it with evidence.
+
+**Week-bucket tags.** The early/mid/late split was already tested in this repo and did not separate: 1.31, 1.73 and 1.81 PPR of lift, within 0.5 of each other. That is a negative result for *detection* and does not transfer to lineup decisions either way, so any roster-construction use needs its own hypothesis and its own test rather than inheriting these buckets. Reusing a bucket that failed its original test because the labels already exist is how a tool starts fitting noise.
+
 ---
 
 ## Stack and data
