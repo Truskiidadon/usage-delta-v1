@@ -187,6 +187,15 @@ def injury_duration(injuries: pd.DataFrame) -> pd.DataFrame:
     A hamstring appearing for the first time could clear in days. A foot
     that has been on the report three separate weeks is chronic, and the
     vacancy behind it is worth acting on.
+
+    KNOWN DEFECT -- games_missed sums, it does not streak. A player who sits
+    in weeks 2 and 5 scores 2 here, identical to one who sat weeks 4 and 5.
+    vacancy_weeks inherits that number and drives the teammate_out_durable
+    tag, which is what lets a teammate-driven rise through the default
+    filter -- so the bug promotes rentals to durable roles. Confirmed false
+    positive documented in the README. Fix is a consecutive-week streak that
+    resets on any week the player was available, which also supplies the
+    rental/riser split described in the README's tag taxonomy.
     """
     df = injuries.sort_values(["season", "gsis_id", "week"]).copy()
 

@@ -124,6 +124,8 @@ Knowing when your own player left a game early, before the injury report confirm
 
 **Backtested on revised data.** nflverse files are corrected over time. Live performance on provisional data will likely be worse than 65%.
 
+**Confirmed false positive: durable vacancy.** Week 5, 2026. A Pittsburgh receiver was flagged at 0.40 to 0.92, corroborated and confirmed, tagged `teammate_out_durable` with `vacancy_weeks=3`. The displaced starter had in fact missed Weeks 2 and 5 only, non-consecutively. The receiver's snap share across the season was 4%, 79%, 27%, 40%, 92% — the two high weeks are precisely the two the starter sat, and he drew zero, one and two targets in the three weeks the starter played. The correct classification was a rental, which the default filter would have suppressed. The flag survived solely because the absence counter summed rather than streaked. Any `teammate_out_durable` flag should be treated as unverified until that fix lands.
+
 ---
 
 ## Usage
@@ -144,15 +146,27 @@ Default output shows unexplained deltas only. `--corroborated-only` applies the 
 
 ## Growth opportunities
 
-**Rostership or ADP join.** Resolves the acquirability question and would determine whether injury-driven flags are actually tradeable or merely predictive. Highest value remaining work.
+Ordered by value. The first two are corrections to known defects and should land before any new feature.
+
+**Consecutive versus cumulative absence.** `games_missed` sums absences instead of streaking them, so a teammate who misses Weeks 2 and 5 scores the same as one who misses Weeks 3, 4 and 5. Since `vacancy_weeks` drives the `teammate_out_durable` tag, and that tag is what lets a teammate-driven rise survive the default filter, the bug converts rentals into apparent durable roles. It produced a confirmed false positive in Week 5 of 2026 (see Limitations). Fix is to streak consecutive missed weeks rather than count them.
+
+**Tag taxonomy.** The current `injury_tag` field answers "what happened" but not "what should I do," and the filter has to infer the second from the first. Three decision tags would replace that inference:
+
+| tag | meaning | condition |
+|---|---|---|
+| `rental` | role reverts when the absent player returns | rise coincides with a teammate absence that has no durable streak, and the riser's share collapses in weeks that teammate played |
+| `riser` | role is the player's own, not borrowed | rise holds in weeks when the position group is fully healthy, or arrives with no absence to explain it |
+| `downside` | sell or bench signal | confirmed decline, or a riser whose displaced teammate is returning |
+
+The separating test for `rental` versus `riser` is retrospective and cheap: compare the player's share in weeks the relevant teammate played against weeks he did not. A player whose two best weeks are exactly the two weeks a starter sat is a rental no matter how large the delta. This also subsumes the `teammate_out` / `teammate_out_durable` split, which is currently doing the job badly.
+
+**Rostership or ADP join.** Resolves the acquirability question and would determine whether injury-driven flags are actually tradeable or merely predictive. Highest value of the non-corrective work.
 
 **Route participation.** Requires a PFF source. The single most predictive missing input.
 
+**Confirmation logic.** Requires same-direction movement across two appearances with each leg clearing 4.5pp, so a gradual climb never confirms. A 2026 case: a receiver went 53% to 63% to 67% to 75% across four weeks, a cumulative +22pp, with no single week above +10pp and one leg at +4pp. Nothing fired. "Jump then hold" and "climb steadily" are both common shapes of a real promotion and neither is currently detected. A rolling multi-week delta alongside the week-over-week one would catch both.
+
 **Position-specific thresholds.** Running back and receiver role changes have different signatures and are currently pooled.
-
-**Confirmation logic.** Currently requires same-direction movement across two appearances, so a player who jumps once and then holds flat fails. "Jump then hold" is arguably the more common shape of a real promotion.
-
-**Consecutive versus cumulative absence.** `games_missed` counts cumulatively, so two unrelated absences in Weeks 1 and 9 score the same as two consecutive weeks out.
 
 **Injury identity resolution.** The duration streak keys on an exact body-part string, so any relabel resets it. Grouping body parts into regions would resolve most of the 159 observed relabels without needing a pending state.
 
