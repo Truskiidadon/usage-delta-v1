@@ -114,6 +114,25 @@ It cannot do it. nflverse's participation feed ends after 2025 and the current-s
 
 Until a live participation source exists, mid-game exits are a known blind spot filled manually or not at all. Treat any large single-week decline as possibly an exit rather than a role change, and check the news before acting on it.
 
+### Leverage concentration does not predict
+
+The idea: measure how much of a team's offense a player commands in one-score fourth quarters relative to his baseline share. A positive value means the offense goes *to* him when the game is live, which separates a player his coaches trust from one whose volume is an artifact of trailing. The descriptive output is legible and the extremes are interesting — a 2026 sample had one receiver at +18.9 and one back at −21.3 on 81 opportunities.
+
+It has no predictive value. Pre-registered on ten seasons, 50,814 player-weeks, trained on 2016-2022 and evaluated on a 2023-2025 holdout, with a +0.005 incremental R² kill criterion stated before the run:
+
+| model | holdout R² |
+|---|---|
+| baseline opportunity share + trailing 3-week scoring | 0.2299 |
+| the same, plus leverage concentration | 0.2298 |
+
+Incremental R² of −0.00004, a faintly negative fitted coefficient, and a correlation with next-week points of 0.033 against 0.364 for opportunity share and 0.461 for recent scoring. The quintile table is non-monotonic: lift appears in the third and fourth base-share bands and vanishes in the first, second and fifth, which is the shape of noise.
+
+It is not a small-sample artifact. Raising the entry bar from 25 prior opportunities to 200, and requiring 20 prior clutch opportunities, leaves the incremental R² negative at every step but the last, where 315 rows produce +0.0047 — still under the kill line and on a sample thin enough to be chance.
+
+The honest read is that opportunity share already contains it. A player the offense concentrates on late is a player with a high share, and the share is measured more precisely because its denominator is twenty times larger.
+
+Retained as a descriptive view only. It is useful for arguing a trade, where the counterparty is pricing off box scores, and it must not be presented as a forecast.
+
 ---
 
 ## Limitations
@@ -175,6 +194,18 @@ The separating test for `rental` versus `riser` is retrospective and cheap: comp
 **Position-specific thresholds.** Running back and receiver role changes have different signatures and are currently pooled.
 
 **Injury identity resolution.** The duration streak keys on an exact body-part string, so any relabel resets it. Grouping body parts into regions would resolve most of the 159 observed relabels without needing a pending state.
+
+**Archetype decompiler.** The largest piece of new work here, and a different question from the one this repo currently answers. `diff.py` asks whether a role changed this week. A decompiler asks what *kind* of role it is, season to date: share of the team's red-zone and inside-five touches, share of third-down targets, average depth of target, catch rate, game-script distribution. Those features assign an archetype — bellcow, early-down, passing-down, goal-line, committee for backs; hub, alpha, field-stretcher, chain-mover, decoy, underneath for receivers.
+
+Three design constraints, all learned the hard way elsewhere in this file:
+
+- **Rules, not clustering.** Every threshold in this repo is an explicit constant with a backtested justification. A k-means cluster whose membership flips week to week cannot be defended in a commit message and would not survive the standard applied to `ACTIONABLE_PP`.
+- **Cumulative, not week-over-week.** The median back has four red-zone carries in five weeks. A weekly share off that denominator is noise, and bolting it onto the existing `ALERT_PP` logic would fire constantly. This is a season-to-date profile.
+- **Classify nothing below a floor.** Same discipline as `MIN_SNAPS`, one layer up: under roughly 30 touches or four appearances, output `unclassified`. A bellcow label off nine carries is worse than no label. A confidence tier — provisional below 50 opportunities, qualified above — is cheaper than a hard cutoff and more honest.
+
+The predictive claim is that *archetype transitions* carry signal where the archetype itself does not: a back who was passing-down in Weeks 1-3 and is a bellcow in Weeks 4-6 is a role change with a name attached, and more legible than a snap-share delta. That claim is untested and must be pre-registered against plain `offense_pct` deltas before any of it is believed. The leverage-concentration result above is the cautionary case — an interpretable metric that described something real and predicted nothing.
+
+One input is unavailable. Route-running quality needs tracking or charting data; nflverse carries neither. Depth of target and catch rate proxy the field-stretcher versus chain-mover split and nothing proxies separation. Document it as a gap rather than approximating it.
 
 ### Adjacent scope: roster construction
 
