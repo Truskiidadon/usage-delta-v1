@@ -84,12 +84,15 @@ Six ideas tested and rejected. They are kept here so they are not re-derived, an
 | leverage concentration ("trust index") | incremental holdout R² of −0.00004 |
 | share stability vs tough defenses | split-half r = 0.03; not a trait |
 | week-of-season buckets | 1.31 / 1.73 / 1.81 lift, within 0.5 of each other |
+| decoy vs dud, by depth of target | +0.21pp tune, −0.29pp holdout; sign reverses |
 
 **The vacancy features failed for one reason**, and it generalizes: the riser's own snap jump already encodes the vacancy. If a backup played 92% of snaps, that 92% *is* the vacancy. Features describing its cause are redundant with the effect already being measured.
 
 **Trust index and stress stability failed for a second reason**, which matters more for what gets built next. Opportunity share is measured on ~100 plays. Clutch share is measured on ~12. A tough-vs-soft defense split is measured on ~6 games. Each candidate was an order of magnitude less precise than the thing it was trying to beat, and the precise measurement already absorbed whatever signal it held.
 
 That converts to a screening rule: **a candidate feature must be either genuinely orthogonal to opportunity share, or measured on a comparable denominator.** Almost nothing derivable from a box score clears it.
+
+**The decoy test failed differently, and the difference is instructive.** A negative residual has four causes — blocker, decoy, untrusted, untalented — and the tool treats them identically. Depth of target separates the deep decoy from the short dud by more than 2x, on cells of a thousand-plus, so the classifier works. The two groups then gain opportunity at the same rate and score the same points. This is not a precision failure like the two above; the effect is simply absent. For fantasy purposes a decoy and a dud are the same asset. Telling them apart properly needs a teammate effect — is the offense better with him out there despite him not touching the ball — which requires play-level participation and is unavailable live.
 
 **Corroboration was anti-predictive for running backs.** For most of this repo's life `carries` was merged into the usage frame and never used, because nflverse publishes `target_share` and no rushing equivalent. The confirmation filter therefore gated every position on a receiving stat. On the holdout, corroborated RB flags returned +0.68 lift against +0.85 for uncorroborated ones — it pointed the wrong way. Fixed by opportunity share; see [baseline profiles](#baseline-profiles). The intermediate carry-share patch is in the history at `2bb73ff` if the reasoning is wanted.
 

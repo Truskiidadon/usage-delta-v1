@@ -45,3 +45,29 @@ opportunity share on 2013-2019, then tests corroborating against the residual
 rather than against a flat threshold. This one worked -- see "v2: baseline
 profiles" in the top-level README. Kept here because the fit and the rejected
 parameterizations are reproducible from it.
+
+## decoy versus dud
+
+`decoy_test.py` asks whether the four causes of a negative residual can be
+told apart in a way that matters. A player on the field and under-used is
+either a blocker, a decoy drawing coverage, a man his quarterback does not
+trust, or one who cannot catch -- and all four produce the same number.
+
+The proposed separator was depth of target plus catch rate: a decoy runs
+deep and converts poorly. Population is pass catchers at 50%+ snaps with a
+negative residual and six or more trailing targets, split into top and
+bottom aDOT terciles within season and position. Pre-registered bar: decoys
+must gain 2pp more opportunity share over the following four weeks.
+
+Result: +0.21pp on tune, -0.29pp on the holdout. The sign reverses.
+
+Worth separating from the other two nulls in this directory. Those failed
+on precision -- the measurement was too noisy to see a possibly-real
+effect. This one does not. Cell sizes are over a thousand and aDOT
+separates the groups by more than 2x, so the classifier genuinely finds two
+different kinds of player. They then gain opportunity at the same rate and
+score the same points. The effect is absent, not obscured.
+
+The real test of a decoy is a teammate effect -- is the offense more
+efficient with him on the field despite him not touching the ball -- and
+that needs play-level participation, which 404s on the current season.
