@@ -27,11 +27,20 @@ ACTIONABLE_PP = 0.25
 # worse. Table in the README.
 CONFIRM_TARGET_PP = 0.05
 
-# The same bar applied to carry share. Inherited from the target bar rather
-# than tuned independently: carry share is more concentrated than target
-# share -- a lead back holds 60-70% of carries where a WR1 holds 25% of
-# targets -- so this is probably too loose and is a flagged follow-up.
-CONFIRM_CARRY_PP = 0.05
+# The same bar applied to carry share, tuned separately because carry share
+# is more concentrated: a lead back holds 60-70% of carries where a WR1
+# holds 25% of targets, and the median week-over-week move is 8.8pp against
+# a receiver's 5.7pp.
+#
+# Selected on the tune set alone (2013-2019) by a rule fixed in advance --
+# the smallest bar whose corroborated-minus-uncorroborated lift gap is
+# within one standard error of the tune maximum. Gap peaks at +0.47 at
+# 0.18, SE 0.20, so the admissible region starts at +0.27 and the smallest
+# qualifying bar is 0.10.
+#
+# Weakly determined, and the README says so: the standard error swamps the
+# differences, and the data cannot distinguish 0.10 from 0.24.
+CONFIRM_CARRY_PP = 0.10
 
 # A move at a small baseline matters more than the same move at a large one.
 # 30% -> 45% is a role change; 75% -> 90% is often just a long game.
@@ -46,6 +55,17 @@ PLAYS_BAND = 0.20
 # Metrics that get diffed. Efficiency metrics are deliberately excluded:
 # they explain a flag after it fires, they do not generate one.
 USAGE_METRICS = ["offense_pct", "target_share", "air_yards_share", "carry_share"]
+
+# ALERT_PP and ACTIONABLE_PP were tuned on SNAP SHARE and are applied by
+# _tier to every metric in that list. They do not transfer: the median
+# week-over-week move is 5.7pp for target share and 8.8pp for carry share,
+# so the same cut sits at a different percentile of each distribution.
+#
+# Only offense_pct_tier is consumed anywhere. The other tier columns are
+# computed, unread, and wrong, and `screen --metric target_share` routes
+# one of them straight to the user. Either tune per metric or stop
+# emitting tiers for metrics nobody screens on -- see the README roadmap.
+TIERED_METRICS = ["offense_pct"]
 
 # Below this, snap share is too jumpy to read as role.
 MIN_SNAPS = 5
@@ -73,19 +93,27 @@ def _tier(delta: float, prior: float) -> str:
 def flag_game_context(usage: pd.DataFrame) -> pd.DataFrame:
     """Mark weeks where team play volume was abnormal.
 
-    A delta from a flagged week still surfaces, but carries lower confidence
-    and does not satisfy the two-week confirmation requirement on its own.
+    Reported alongside a flag as a confidence note. It does NOT gate
+    anything -- an earlier docstring claimed it blocked two-week
+    confirmation and no such code ever existed.
+
+    The reference average expands over prior weeks rather than averaging the
+    whole season. A season mean is not knowable in week 3, and the backtest
+    states it only uses what was knowable at the time; computing this one
+    column off the full season quietly broke that promise.
     """
-    df = usage.copy()
-    avg = (
-        df.groupby(["season", "team"], as_index=False)["team_plays"]
-        .mean()
-        .rename(columns={"team_plays": "team_plays_avg"})
+    df = usage.copy().sort_values(["season", "team", "week"])
+
+    prior = (
+        df.groupby(["season", "team"])["team_plays"]
+        .apply(lambda s: s.shift(1).expanding(min_periods=1).mean())
+        .reset_index(level=[0, 1], drop=True)
     )
-    df = df.merge(avg, on=["season", "team"], how="left")
+    df["team_plays_avg"] = prior
 
     deviation = (df["team_plays"] - df["team_plays_avg"]).abs() / df["team_plays_avg"]
-    df["context_ok"] = deviation <= PLAYS_BAND
+    # Week 1 has no prior and is neither confirmed nor impugned.
+    df["context_ok"] = (deviation <= PLAYS_BAND) | df["team_plays_avg"].isna()
     return df
 
 
@@ -110,9 +138,12 @@ def compute_deltas(usage: pd.DataFrame, metrics=None) -> pd.DataFrame:
         prior = grp[m].shift(1)
         df[f"{m}_prior"] = prior
         df[f"{m}_delta"] = df[m] - prior
-        df[f"{m}_tier"] = [
-            _tier(d, p) for d, p in zip(df[f"{m}_delta"], prior)
-        ]
+        # Tiers only where the thresholds were actually tuned. See
+        # TIERED_METRICS for why this is not every metric.
+        if m in TIERED_METRICS:
+            df[f"{m}_tier"] = [
+                _tier(d, p) for d, p in zip(df[f"{m}_delta"], prior)
+            ]
 
     # Raw snaps alongside share: a flat 75% share can hide 15 extra snaps.
     df["offense_snaps_prior"] = grp["offense_snaps"].shift(1)
@@ -137,9 +168,16 @@ def compute_deltas(usage: pd.DataFrame, metrics=None) -> pd.DataFrame:
     car_up = _moved("carry_share_delta", CONFIRM_CARRY_PP, True)
     car_dn = _moved("carry_share_delta", CONFIRM_CARRY_PP, False)
 
-    is_rb = df["position"].eq("RB") if "position" in df.columns else False
-    conf_up = (tgt_up | car_up) & is_rb | tgt_up & ~is_rb
-    conf_dn = (tgt_dn | car_dn) & is_rb | tgt_dn & ~is_rb
+    if "position" in df.columns:
+        is_rb = df["position"].eq("RB")
+    else:
+        is_rb = pd.Series(False, index=df.index)
+
+    # Explicit parentheses, and is_rb is always a Series: `~False` is -1 in
+    # Python, so a scalar fallback here silently produces a bitwise AND
+    # against an integer rather than a mask.
+    conf_up = ((tgt_up | car_up) & is_rb) | (tgt_up & ~is_rb)
+    conf_dn = ((tgt_dn | car_dn) & is_rb) | (tgt_dn & ~is_rb)
 
     df["corroborated"] = (
         (df["offense_pct_delta"] > 0) & conf_up
