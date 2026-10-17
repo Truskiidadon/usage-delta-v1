@@ -246,6 +246,43 @@ def confirmed_trend(deltas: pd.DataFrame, metric: str = "offense_pct") -> pd.Dat
     return df
 
 
+def for_display(out: pd.DataFrame, metric: str = "offense_pct") -> pd.DataFrame:
+    """Format a report for a human.
+
+    Every number in a report is a share, so every number is a percentage.
+    Printing 0.158 when the fact is "fifteen points of his team's touches"
+    makes the reader do the conversion, and they will do it wrong for the
+    residual, which is the one column whose units are not obvious.
+    """
+    df = out.copy()
+    pct = lambda s: (s * 100).round(0).astype("Int64")
+    pp = lambda s: (s * 100).round(1)
+
+    show = pd.DataFrame(index=df.index)
+    show["player"] = df["player"]
+    show["pos"] = df["position"]
+    show["team"] = df["team"]
+    if f"{metric}_prior" in df and metric in df:
+        show["snap%"] = (
+            pct(df[f"{metric}_prior"]).astype(str) + " → " + pct(df[metric]).astype(str)
+        )
+    if "opp_share_delta" in df:
+        show["opp Δ"] = pp(df["opp_share_delta"]).map(lambda v: f"{v:+.1f}pp")
+    if "opp_resid_delta" in df:
+        show["vs base"] = pp(df["opp_resid_delta"]).map(lambda v: f"{v:+.1f}pp")
+    for col, name in (
+        ("confirmed", "held"),
+        ("corroborated", "ball"),
+        ("injury_tag", "why"),
+    ):
+        if col in df:
+            show[name] = (
+                df[col].map({True: "yes", False: "—"}) if df[col].dtype == bool
+                else df[col]
+            )
+    return show
+
+
 def report(
     deltas: pd.DataFrame,
     week: int,

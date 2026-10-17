@@ -8,7 +8,7 @@ import argparse
 
 import pandas as pd
 
-from .diff import compute_deltas, confirmed_trend, report
+from .diff import compute_deltas, confirmed_trend, for_display, report
 from .fetch import build_usage
 from .injuries import load_injuries, tag
 
@@ -21,6 +21,11 @@ def main() -> None:
         "--metric",
         default="offense_pct",
         choices=["offense_pct"],
+    )
+    p.add_argument(
+        "--raw",
+        action="store_true",
+        help="print unformatted shares instead of percentages",
     )
     p.add_argument(
         "--positions",
@@ -103,7 +108,8 @@ def main() -> None:
 
     kept = "all" if args.all_tags else "unexplained"
     print(f"\n{args.metric} — week {args.week} ({len(out)} of {total} flagged, {kept})\n")
-    print(out.head(args.limit).to_string(index=False))
+    shown = out if args.raw else for_display(out, args.metric)
+    print(shown.head(args.limit).to_string(index=False))
 
     if not args.all_tags:
         print(
