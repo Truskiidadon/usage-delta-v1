@@ -143,7 +143,7 @@ def snapshot(deltas: pd.DataFrame, season: int, week: int,
         for c in (
             "season", "week", "player", "position", "team", "gsis_id",
             "offense_pct_prior", "offense_pct", "offense_pct_delta",
-            "offense_pct_tier", "target_share_delta", "injury_tag",
+            "offense_pct_tier", "opp_share_delta", "opp_resid_delta", "injury_tag",
             "vacancy_weeks", "confirmed", "corroborated",
             "add_count", "drop_count",
         )

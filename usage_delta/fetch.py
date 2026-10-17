@@ -112,19 +112,23 @@ def team_plays(snaps: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def team_carries(stats: pd.DataFrame) -> pd.DataFrame:
-    """Rush attempts per team per week -- the denominator for carry share.
+def team_opportunities(stats: pd.DataFrame) -> pd.DataFrame:
+    """Carries and targets per team per week -- the opportunity denominators.
 
-    nflverse ships target_share and air_yards_share but no rushing
-    equivalent, which is why this repo went five months without one.
-    Summing the player rows includes quarterback scrambles and kneels,
-    and that is correct: those are carries the backs did not get.
+    nflverse ships target_share but no rushing equivalent, which is why this
+    repo went five months without one. Summing the player rows includes
+    quarterback scrambles and kneels, and that is correct: those are carries
+    the backs did not get.
+
+    An "opportunity" is a carry or a target -- one touch the offense chose
+    to give someone. That single denominator is what lets one metric serve
+    every position instead of targets for receivers and carries for backs.
     """
-    return (
-        stats.groupby(["season", "week", "team"], as_index=False)["carries"]
-        .sum()
-        .rename(columns={"carries": "team_carries"})
-    )
+    g = stats.groupby(["season", "week", "team"], as_index=False)[
+        ["carries", "targets"]
+    ].sum()
+    g["team_opps"] = g["carries"] + g["targets"]
+    return g.rename(columns={"carries": "team_carries", "targets": "team_targets"})
 
 
 def build_usage(season: int, refresh: bool = False) -> pd.DataFrame:
@@ -147,18 +151,29 @@ def build_usage(season: int, refresh: bool = False) -> pd.DataFrame:
     )
 
     usage = usage.merge(team_plays(snaps), on=["season", "week", "team"], how="left")
-    usage = usage.merge(team_carries(stats), on=["season", "week", "team"], how="left")
+    usage = usage.merge(
+        team_opportunities(stats)[
+            ["season", "week", "team", "team_carries", "team_opps"]
+        ],
+        on=["season", "week", "team"],
+        how="left",
+    )
 
     # Players with no receiving line genuinely had zero, not missing data.
     for col in ("targets", "target_share", "air_yards_share", "carries"):
         if col in usage.columns:
             usage[col] = usage[col].fillna(0)
 
-    # Derived here because nflverse does not publish it. A back's role lives
-    # in this column; without it, corroboration gates every position on a
-    # receiving stat and backs confirm at 28% against a receiver's 40%.
+    # carry_share is kept as a diagnostic column. opp_share is the one the
+    # screen runs on: it sums to 1.0 across a team-week by construction and
+    # means the same thing for every position, which a receiving-only stat
+    # never did.
     usage["carry_share"] = (
         usage["carries"] / usage["team_carries"].where(usage["team_carries"] > 0)
+    ).fillna(0)
+    usage["opp_share"] = (
+        (usage["carries"] + usage["targets"])
+        / usage["team_opps"].where(usage["team_opps"] > 0)
     ).fillna(0)
 
     usage = usage.drop(columns=["pfr_id", "player_id"], errors="ignore")

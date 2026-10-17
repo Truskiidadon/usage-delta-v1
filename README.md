@@ -23,14 +23,15 @@ It began as a manual scan of weekly snap reports — slow, inconsistent, and bia
 | metric | source | role |
 |---|---|---|
 | offensive snap share | nflverse snap counts | is he on the field |
-| target share | nflverse weekly stats | is he getting the ball (pass catchers) |
-| carry share | derived — nflverse ships no rushing equivalent | is he getting the ball (backs) |
+| opportunity share | derived — `(carries + targets) / team opportunities` | is he getting the ball |
+
+Opportunity share sums to 1.0 across a team-week by construction and means the same thing for every position. `target_share` and `carry_share` are still diffed as diagnostics; neither confirms a flag any more.
 
 **Filtering.** Raw detection produces ~159 flags a week, which is not a screen. Four filters cut it to about five.
 
 - **Threshold** — 25pp to be actionable, scaled to baseline, since 30→45% is a larger proportional move than 75→90%.
 - **Confirmation** — the move holds across two consecutive appearances. One week is usually game script.
-- **Corroboration** — snap share moves together with the metric that carries that position's role: carries for backs, targets for receivers. A snap rise alone says he was on the field more; paired with touches it says he was on the field *and* getting the ball.
+- **Corroboration** — snap share moves together with opportunity share, measured against the position's own snap-to-opportunity baseline. A snap rise alone says he was on the field more; paired with the ball it says the offense gave him something. See [baseline profiles](#baseline-profiles).
 - **Injury context** — each delta is tagged with *why*, not merely whether an injury was involved.
 
 | tag | meaning |
@@ -90,7 +91,7 @@ Six ideas tested and rejected. They are kept here so they are not re-derived, an
 
 That converts to a screening rule: **a candidate feature must be either genuinely orthogonal to opportunity share, or measured on a comparable denominator.** Almost nothing derivable from a box score clears it.
 
-**Corroboration was anti-predictive for running backs.** `carries` was merged into the usage frame and never used; no `carry_share` existed, because nflverse publishes `target_share` but no rushing equivalent. The confirmation filter therefore gated every position on a receiving stat. On the holdout, corroborated RB flags returned +0.68 lift against +0.85 for uncorroborated ones — the filter pointed the wrong way. Adding carry share roughly doubles corroborated lift (0.216 → 0.419) and reverses the RB sign. `CONFIRM_CARRY_PP` is weakly determined: the standard error swamps the differences and the data cannot separate 0.10 from 0.24.
+**Corroboration was anti-predictive for running backs.** For most of this repo's life `carries` was merged into the usage frame and never used, because nflverse publishes `target_share` and no rushing equivalent. The confirmation filter therefore gated every position on a receiving stat. On the holdout, corroborated RB flags returned +0.68 lift against +0.85 for uncorroborated ones — it pointed the wrong way. Fixed by opportunity share; see [baseline profiles](#baseline-profiles). The intermediate carry-share patch is in the history at `2bb73ff` if the reasoning is wanted.
 
 **The exit detector cannot serve its best use.** Knowing a player left early, before the injury report confirms it, is a hold/sell signal rather than a waiver one. The detector works — a player whose last snap came before 65% of his team's plays is ~4x likelier to appear on next week's report. But nflverse participation ends after 2025 and the current-season file 404s, so it runs only on history. Across one week of 2026, three flags in this tool were explained by exits it could not see. Treat any large single-week decline as possibly an exit and check the news.
 
@@ -123,9 +124,9 @@ Default output is unexplained deltas only. `--corroborated-only` is the highest-
 
 ---
 
-## v2: baseline profiles
+## Baseline profiles
 
-The single largest improvement available, measured and not yet built.
+The corroboration layer. Shipped.
 
 Every position converts snaps into opportunities at a different rate. Fit on 2013–2019:
 
@@ -137,7 +138,7 @@ Every position converts snaps into opportunities at a different rate. Fit on 201
 
 A back turns nearly half his snaps into a touch. A tight end turns a quarter of that, with the loosest fit of the three — and that gap is blocking. A receiver on the field is running a route; a tight end on the field may be a sixth lineman. This is why the shipped screen is *negative* on tight ends: it reads added snaps as added opportunity, and for that position it frequently is not.
 
-**The architecture:** define `opp_share = (carries + targets) / team opportunities`, fit the per-position conversion on history, and corroborate against the baseline rather than against a flat threshold. Where the conversion is tight (RB, r = 0.875) use raw opportunity share — the residual there is mostly noise. Where it is loose (WR, TE) use the residual, which is what separates a weapon from a blocker.
+**The rule:** fit the per-position conversion on history, then corroborate against that baseline rather than a flat threshold. Where the conversion is tight (RB, r = 0.875) confirm on raw opportunity share — the residual there is mostly noise. Where it is loose (WR, TE) confirm on the residual, which is what separates a weapon from a blocker. The cut is on the fit's own r, not on position identity: add a position, fit it, and `RESIDUAL_ABOVE_R` decides for you.
 
 Holdout lift gap, corroborated minus uncorroborated:
 
@@ -146,11 +147,11 @@ Holdout lift gap, corroborated minus uncorroborated:
 | target-only (shipped before carry share) | −0.19 | +0.11 | +0.19 | +0.04 |
 | position-branched carries/targets (current) | +0.30 | +0.11 | +0.19 | +0.20 |
 | unified opp share, flat 3pp bar | +0.03 | +0.19 | +0.30 | +0.17 |
-| **baseline profile (raw for RB, residual for WR/TE)** | **+0.27** | **+0.38** | **+0.52** | **+0.39** |
+| **baseline profile (shipped)** | **+0.28** | **+0.38** | **+0.54** | **+0.40** |
 
-Tune for the last row is +0.32, so the holdout is *higher* — no overfitting. Every position is positive in both sets.
+Tune for the last row is +0.32, so the holdout is *higher* — no overfitting. Every position is positive in both sets, and overall holdout corroborated lift goes from 0.216 under the receiving-only rule to **0.757**.
 
-This also collapses the metric list. `target_share`, `carry_share`, `air_yards_share`, `CONFIRM_TARGET_PP`, `CONFIRM_CARRY_PP` and the position branch all become one metric and one profile table.
+It also collapsed the metric list: `air_yards_share`, `CONFIRM_TARGET_PP`, `CONFIRM_CARRY_PP` and the position branch are gone, replaced by one metric and one profile table.
 
 Two parameterizations were tried and rejected: a *relative* opportunity threshold (negative gaps at every position in both sets) and a residual bar scaled to each position's residual spread (tune picks k=1.0, holdout calls it worst and drives RB to −0.19).
 

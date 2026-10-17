@@ -25,22 +25,34 @@ ACTIONABLE_PP = 0.25
 # Backtested and it replicates: hit rate vs matched controls goes 54% -> 66%
 # on the holdout, lift 1.66 -> 2.89. Adding air-yards share on top made it
 # worse. Table in the README.
-CONFIRM_TARGET_PP = 0.05
+# How each position converts snaps into opportunities, fit by least squares
+# on 2013-2019 and frozen. opp_share = intercept + slope * snap_share.
+#
+# The slopes are the point. A back turns nearly half his snaps into a touch;
+# a tight end a quarter of that, with the loosest fit of the three. That gap
+# is blocking -- a receiver on the field is running a route, a tight end on
+# the field may be a sixth lineman. It is why a flat confirmation bar made
+# the screen NEGATIVE on tight ends: added snaps were read as added
+# opportunity and for that position they frequently are not.
+#
+#                    intercept   slope      r
+POSITION_PROFILES = {
+    "RB": (-0.0038, 0.4814),   # r = 0.875
+    "WR": (-0.0088, 0.1509),   # r = 0.724
+    "TE": (-0.0134, 0.1182),   # r = 0.680
+}
 
-# The same bar applied to carry share, tuned separately because carry share
-# is more concentrated: a lead back holds 60-70% of carries where a WR1
-# holds 25% of targets, and the median week-over-week move is 8.8pp against
-# a receiver's 5.7pp.
-#
-# Selected on the tune set alone (2013-2019) by a rule fixed in advance --
-# the smallest bar whose corroborated-minus-uncorroborated lift gap is
-# within one standard error of the tune maximum. Gap peaks at +0.47 at
-# 0.18, SE 0.20, so the admissible region starts at +0.27 and the smallest
-# qualifying bar is 0.10.
-#
-# Weakly determined, and the README says so: the standard error swamps the
-# differences, and the data cannot distinguish 0.10 from 0.24.
-CONFIRM_CARRY_PP = 0.10
+# Where the conversion is tight, raw opportunity share is the better signal
+# and the residual is mostly noise. Where it is loose, the residual is what
+# separates a weapon from a blocker. The cut is on the fit's own r, not on
+# position identity -- add a position, fit it, and this decides for you.
+RESIDUAL_ABOVE_R = 0.80
+
+# Corroboration bars. Raw-share bars are ~1.6x that position's median
+# week-over-week move; the residual bar is one number because residuals are
+# already centred by the profile.
+CONFIRM_OPP_PP = {"RB": 0.08, "WR": 0.04, "TE": 0.03}
+CONFIRM_RESID_PP = 0.04
 
 # A move at a small baseline matters more than the same move at a large one.
 # 30% -> 45% is a role change; 75% -> 90% is often just a long game.
@@ -54,7 +66,12 @@ PLAYS_BAND = 0.20
 
 # Metrics that get diffed. Efficiency metrics are deliberately excluded:
 # they explain a flag after it fires, they do not generate one.
-USAGE_METRICS = ["offense_pct", "target_share", "air_yards_share", "carry_share"]
+#
+# offense_pct and opp_share carry the screen -- on the field, and getting
+# the ball. target_share and carry_share are diagnostics only: useful to
+# read on a flag, no longer used to confirm one. air_yards_share was tested
+# as a third confirmer, made flags worse, and is gone.
+USAGE_METRICS = ["offense_pct", "opp_share", "target_share", "carry_share"]
 
 # ALERT_PP and ACTIONABLE_PP were tuned on SNAP SHARE and are applied by
 # _tier to every metric in that list. They do not transfer: the median
@@ -149,43 +166,66 @@ def compute_deltas(usage: pd.DataFrame, metrics=None) -> pd.DataFrame:
     df["offense_snaps_prior"] = grp["offense_snaps"].shift(1)
     df["offense_snaps_delta"] = df["offense_snaps"] - df["offense_snaps_prior"]
 
-    # Snap share moving together with the metric that carries that position's
-    # role. See CONFIRM_TARGET_PP.
-    #
-    # This used to gate every position on target share, which made the filter
-    # structurally blind to running backs: 2026 flags corroborated at 28% for
-    # RBs against 40% for WRs, and a back who went from a 37% committee role
-    # to a 97% bellcow while doubling his carries never corroborated once,
-    # because his targets stayed flat at four to six. A back's job is carries.
-    # A receiving back still confirms on targets, so RB takes either.
-    def _moved(col, bar, up):
-        if col not in df.columns:
-            return pd.Series(False, index=df.index)
-        return df[col] >= bar if up else df[col] <= -bar
+    df = add_baseline_residual(df)
+    df["corroborated"] = corroborate(df)
+    return df
 
-    tgt_up = _moved("target_share_delta", CONFIRM_TARGET_PP, True)
-    tgt_dn = _moved("target_share_delta", CONFIRM_TARGET_PP, False)
-    car_up = _moved("carry_share_delta", CONFIRM_CARRY_PP, True)
-    car_dn = _moved("carry_share_delta", CONFIRM_CARRY_PP, False)
 
-    if "position" in df.columns:
-        is_rb = df["position"].eq("RB")
-    else:
-        is_rb = pd.Series(False, index=df.index)
+def add_baseline_residual(df: pd.DataFrame) -> pd.DataFrame:
+    """Opportunity share above what this position's snap count predicts.
 
-    # Explicit parentheses, and is_rb is always a Series: `~False` is -1 in
-    # Python, so a scalar fallback here silently produces a bitwise AND
-    # against an integer rather than a mask.
-    conf_up = ((tgt_up | car_up) & is_rb) | (tgt_up & ~is_rb)
-    conf_dn = ((tgt_dn | car_dn) & is_rb) | (tgt_dn & ~is_rb)
+    The baseline is a line, not a constant. Measuring a player against it
+    separates "he was on the field more" from "the offense gave him more,"
+    which for a blocking position are very different events.
+    """
+    out = df.copy()
+    inter = out["position"].map(lambda p: POSITION_PROFILES.get(p, (np.nan,) * 2)[0])
+    slope = out["position"].map(lambda p: POSITION_PROFILES.get(p, (np.nan,) * 2)[1])
 
-    df["corroborated"] = (
-        (df["offense_pct_delta"] > 0) & conf_up
-    ) | (
-        (df["offense_pct_delta"] < 0) & conf_dn
+    out["opp_expected"] = inter + slope * out["offense_pct"]
+    out["opp_resid"] = out["opp_share"] - out["opp_expected"]
+
+    grp = out.sort_values(["pfr_player_id", "week"]).groupby("pfr_player_id", sort=False)
+    prior = grp["opp_resid"].shift(1).reindex(out.index)
+    out["opp_resid_prior"] = prior
+    out["opp_resid_delta"] = out["opp_resid"] - prior
+    return out
+
+
+def corroborate(df: pd.DataFrame) -> pd.Series:
+    """Did the snap move come with the ball?
+
+    One rule, parameterised by the position's own snap-to-opportunity fit.
+    Tight fit (RB, r=0.875) confirms on raw opportunity share, because the
+    residual there is mostly noise. Loose fit (WR 0.724, TE 0.680) confirms
+    on the residual, because that is where a route is distinguished from a
+    block. Measured on the holdout: RB +0.27, WR +0.38, TE +0.52 lift gap,
+    against +0.04 for the receiving-only rule this replaces.
+    """
+    up = df["offense_pct_delta"] > 0
+    dn = df["offense_pct_delta"] < 0
+
+    use_resid = df["position"].map(
+        lambda p: _profile_r(p) < RESIDUAL_ABOVE_R if p in POSITION_PROFILES else False
+    )
+    bar = df["position"].map(CONFIRM_OPP_PP)
+
+    moved = pd.Series(np.nan, index=df.index, dtype=float)
+    moved = moved.mask(use_resid, df["opp_resid_delta"])
+    moved = moved.mask(~use_resid, df["opp_share_delta"])
+    threshold = pd.Series(
+        np.where(use_resid, CONFIRM_RESID_PP, bar), index=df.index, dtype=float
     )
 
-    return df
+    return ((up & (moved >= threshold)) | (dn & (moved <= -threshold))).fillna(False)
+
+
+# r of each profile fit, recorded alongside the coefficients it came from.
+_PROFILE_R = {"RB": 0.875, "WR": 0.724, "TE": 0.680}
+
+
+def _profile_r(pos: str) -> float:
+    return _PROFILE_R.get(pos, 0.0)
 
 
 def confirmed_trend(deltas: pd.DataFrame, metric: str = "offense_pct") -> pd.DataFrame:
@@ -238,6 +278,8 @@ def report(
         f"{metric}_delta",
         f"{metric}_tier",
         "offense_snaps_delta",
+        "opp_share_delta",
+        "opp_resid_delta",
         "context_ok",
         "confirmed",
         "corroborated",

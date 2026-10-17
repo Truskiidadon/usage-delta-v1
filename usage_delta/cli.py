@@ -1,7 +1,7 @@
 """Command line entry point.
 
     python -m usage_delta.cli --week 5
-    python -m usage_delta.cli --week 5 --metric target_share --confirmed-only
+    python -m usage_delta.cli --week 5 --confirmed-only --corroborated-only
 """
 
 import argparse
@@ -20,7 +20,7 @@ def main() -> None:
     p.add_argument(
         "--metric",
         default="offense_pct",
-        choices=["offense_pct", "target_share", "air_yards_share"],
+        choices=["offense_pct"],
     )
     p.add_argument(
         "--positions",
