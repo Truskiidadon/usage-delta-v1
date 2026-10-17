@@ -80,6 +80,8 @@ Every threshold started as a guess fitted to a handful of known cases. That is a
 
 Tune set reached 70.3% and 2.27. Shrinkage from tune to holdout is ordinary, not collapse. Excluding 2020 as a COVID control moves the result slightly upward, so pandemic conditions were not driving it.
 
+**Reproduction note.** Re-running this table from the committed code reproduces the *ordering* cleanly — 49.7%/1.34, 52.1%/1.60, 54.8%/1.82, 54.9%/1.90 — but the levels sit 4 to 11 points below the figures above, with the gap widening at the tighter filters. The monotonic structure is what the conclusion rests on and it holds. The level discrepancy is unexplained and open: candidates are drift in `_weighted_control` or `BASELINE_BINS` since the numbers were recorded, a different direction or appearance filter, or an error in the original run. Until it is resolved, treat the ordering as established and the absolute figures as approximate.
+
 ### What the validation established
 
 **The signal is real and dose-dependent.** Lift rises monotonically with the threshold: 0.53 at 9pp, 1.00 at 20pp, 1.53 at 30pp, 1.96 at 40pp. Four independent measurements landing in the correct order is stronger evidence than any single figure.
@@ -101,6 +103,27 @@ Two separate attempts to detect *why* a role opened both failed, and they failed
 **Paired teammate decline.** Share within a position group is near zero-sum, so a rise in one player should pair with a fall in another. Monotonic on the tune set, did not replicate on the holdout.
 
 **In-game exit detection.** Play-by-play participation identifies players who left early. The detector itself works well: a player whose last snap came before 65% of his team's plays is roughly 4x likelier to appear on next week's injury report than baseline. But adding "a teammate exited" made flags *worse* in both sets, 51% versus 60%.
+
+### Corroboration was anti-predictive for running backs
+
+Found by asking a question nobody had asked the code: are carries in this at all?
+
+They were not. `carries` was merged into the usage frame and never used. There was no `carry_share` — nflverse publishes `target_share` and `air_yards_share` but no rushing equivalent, so the column simply never existed, and `USAGE_METRICS` and `corroborated` were both built on receiving stats alone.
+
+That made the confirmation filter gate every position on a receiving metric. 2026 flags corroborated at 28.1% for backs against 40.3% for receivers, and the clearest role change in the sample — a back going from a 37% committee share to 97% while his carries went from 10 to 17 — never corroborated once, because his targets stayed flat at four to six.
+
+On the 2020-2025 holdout it was worse than blind:
+
+| RB flags, holdout | n | lift |
+|---|---|---|
+| corroborated under the shipped rule | 1353 | +0.68 |
+| *not* corroborated | 2590 | **+0.85** |
+
+The filter pointed the wrong way. A corroborated back was a worse bet than an uncorroborated one.
+
+Adding carry share, with RB confirming on either carries or targets and WR/TE unchanged, roughly doubles corroborated lift on the holdout (0.216 to 0.411) and reverses the RB sign to +0.25 at a 0.12 bar.
+
+Two things remain unfinished and are stated here rather than buried. `CONFIRM_CARRY_PP` ships at 0.05, inherited from the target bar; the tune sweep shows a flat optimum between 0.12 and 0.25, so the shipped value is too loose and the filter currently passes 79.6% of RB flags. And the bar sweep was run with tune and holdout printed together, so the 0.12 figure is contaminated by having seen the holdout and must be re-selected on tune alone before it is trusted.
 
 **The shared reason is the finding.** The riser's own snap jump already encodes the vacancy. If a backup played 92% of snaps, that 92% *is* the vacancy. Features describing its cause are redundant with the effect already being measured.
 

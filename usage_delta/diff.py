@@ -27,6 +27,12 @@ ACTIONABLE_PP = 0.25
 # worse. Table in the README.
 CONFIRM_TARGET_PP = 0.05
 
+# The same bar applied to carry share. Inherited from the target bar rather
+# than tuned independently: carry share is more concentrated than target
+# share -- a lead back holds 60-70% of carries where a WR1 holds 25% of
+# targets -- so this is probably too loose and is a flagged follow-up.
+CONFIRM_CARRY_PP = 0.05
+
 # A move at a small baseline matters more than the same move at a large one.
 # 30% -> 45% is a role change; 75% -> 90% is often just a long game.
 # Trigger on whichever is easier to clear: the flat threshold or this.
@@ -39,7 +45,7 @@ PLAYS_BAND = 0.20
 
 # Metrics that get diffed. Efficiency metrics are deliberately excluded:
 # they explain a flag after it fires, they do not generate one.
-USAGE_METRICS = ["offense_pct", "target_share", "air_yards_share"]
+USAGE_METRICS = ["offense_pct", "target_share", "air_yards_share", "carry_share"]
 
 # Below this, snap share is too jumpy to read as role.
 MIN_SNAPS = 5
@@ -112,17 +118,34 @@ def compute_deltas(usage: pd.DataFrame, metrics=None) -> pd.DataFrame:
     df["offense_snaps_prior"] = grp["offense_snaps"].shift(1)
     df["offense_snaps_delta"] = df["offense_snaps"] - df["offense_snaps_prior"]
 
-    # Snap share and target share moving together. See CONFIRM_TARGET_PP.
-    if "target_share_delta" in df.columns:
-        df["corroborated"] = (
-            (df["offense_pct_delta"] > 0)
-            & (df["target_share_delta"] >= CONFIRM_TARGET_PP)
-        ) | (
-            (df["offense_pct_delta"] < 0)
-            & (df["target_share_delta"] <= -CONFIRM_TARGET_PP)
-        )
-    else:
-        df["corroborated"] = False
+    # Snap share moving together with the metric that carries that position's
+    # role. See CONFIRM_TARGET_PP.
+    #
+    # This used to gate every position on target share, which made the filter
+    # structurally blind to running backs: 2026 flags corroborated at 28% for
+    # RBs against 40% for WRs, and a back who went from a 37% committee role
+    # to a 97% bellcow while doubling his carries never corroborated once,
+    # because his targets stayed flat at four to six. A back's job is carries.
+    # A receiving back still confirms on targets, so RB takes either.
+    def _moved(col, bar, up):
+        if col not in df.columns:
+            return pd.Series(False, index=df.index)
+        return df[col] >= bar if up else df[col] <= -bar
+
+    tgt_up = _moved("target_share_delta", CONFIRM_TARGET_PP, True)
+    tgt_dn = _moved("target_share_delta", CONFIRM_TARGET_PP, False)
+    car_up = _moved("carry_share_delta", CONFIRM_CARRY_PP, True)
+    car_dn = _moved("carry_share_delta", CONFIRM_CARRY_PP, False)
+
+    is_rb = df["position"].eq("RB") if "position" in df.columns else False
+    conf_up = (tgt_up | car_up) & is_rb | tgt_up & ~is_rb
+    conf_dn = (tgt_dn | car_dn) & is_rb | tgt_dn & ~is_rb
+
+    df["corroborated"] = (
+        (df["offense_pct_delta"] > 0) & conf_up
+    ) | (
+        (df["offense_pct_delta"] < 0) & conf_dn
+    )
 
     return df
 

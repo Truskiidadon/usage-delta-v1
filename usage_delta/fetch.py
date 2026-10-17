@@ -112,6 +112,21 @@ def team_plays(snaps: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def team_carries(stats: pd.DataFrame) -> pd.DataFrame:
+    """Rush attempts per team per week -- the denominator for carry share.
+
+    nflverse ships target_share and air_yards_share but no rushing
+    equivalent, which is why this repo went five months without one.
+    Summing the player rows includes quarterback scrambles and kneels,
+    and that is correct: those are carries the backs did not get.
+    """
+    return (
+        stats.groupby(["season", "week", "team"], as_index=False)["carries"]
+        .sum()
+        .rename(columns={"carries": "team_carries"})
+    )
+
+
 def build_usage(season: int, refresh: bool = False) -> pd.DataFrame:
     """One row per player per week, with every usage metric we can get free.
 
@@ -132,11 +147,19 @@ def build_usage(season: int, refresh: bool = False) -> pd.DataFrame:
     )
 
     usage = usage.merge(team_plays(snaps), on=["season", "week", "team"], how="left")
+    usage = usage.merge(team_carries(stats), on=["season", "week", "team"], how="left")
 
     # Players with no receiving line genuinely had zero, not missing data.
     for col in ("targets", "target_share", "air_yards_share", "carries"):
         if col in usage.columns:
             usage[col] = usage[col].fillna(0)
+
+    # Derived here because nflverse does not publish it. A back's role lives
+    # in this column; without it, corroboration gates every position on a
+    # receiving stat and backs confirm at 28% against a receiver's 40%.
+    usage["carry_share"] = (
+        usage["carries"] / usage["team_carries"].where(usage["team_carries"] > 0)
+    ).fillna(0)
 
     usage = usage.drop(columns=["pfr_id", "player_id"], errors="ignore")
     return usage.sort_values(["player", "week"]).reset_index(drop=True)
